@@ -1,2 +1,2 @@
-# sorted_dict
-A sorted dictionary, in C, for Python
+# Orderbook
+An orderbook implementation, in C, for Python
