@@ -1,16 +1,4 @@
-#define PY_SSIZE_T_CLEAN
-#include <stdint.h>
-#include <Python.h>
-
-#include "structmember.h"
-
-
-typedef struct {
-    PyObject_HEAD
-    PyObject *bids;
-    PyObject *asks;
-    uint32_t max_depth;
-} Orderbook;
+#include "orderbook.h"
 
 
 static void Orderbook_dealloc(Orderbook *self)
@@ -95,13 +83,6 @@ static PyTypeObject OrderbookType = {
 };
 
 /* Sorted Dictionary */
-typedef struct {
-    PyObject_HEAD
-    PyObject *data;
-    int ordering;
-} SortedDict;
-
-
 static void SortedDict_dealloc(SortedDict *self)
 {
     Py_XDECREF(self->data);
