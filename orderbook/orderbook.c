@@ -94,7 +94,106 @@ static PyTypeObject OrderbookType = {
     .tp_methods = Orderbook_methods,
 };
 
+/* Sorted Dictionary */
+typedef struct {
+    PyObject_HEAD
+    PyObject *data;
+} SortedDict;
 
+
+static void SortedDict_dealloc(SortedDict *self)
+{
+    Py_XDECREF(self->data);
+    Py_TYPE(self)->tp_free((PyObject *) self);
+}
+
+
+static PyObject *SortedDict_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    SortedDict *self;
+    self = (SortedDict *) type->tp_alloc(type, 0);
+    if (self != NULL) {
+        self->data = PyDict_New();
+        if (!self->data) {
+            Py_DECREF(self);
+            return NULL;
+        }
+    }
+    return (PyObject *) self;
+}
+
+
+static int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
+{
+    return 0;
+}
+
+
+static PyMemberDef SortedDict_members[] = {
+    {"__data", T_OBJECT_EX, offsetof(SortedDict, data), READONLY, "internal data"},
+    {NULL}
+};
+
+
+static PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored))
+{
+    PyObject *keys = PyDict_Keys(self->data);
+    if (PyList_Sort(keys) < 0) {
+        return NULL;
+    }
+    return keys;
+}
+
+
+static PyMethodDef SortedDict_methods[] = {
+    {"keys", (PyCFunction) SortedDict_keys, METH_NOARGS, "return a list of keys in the sorted dictionary"
+    },
+    {NULL}
+};
+
+/* Sorted Dictionary Mapping Functions */
+Py_ssize_t SortedDict_len(SortedDict *self) {
+	return PyDict_Size(self->data);
+}
+
+PyObject *SortedDict_getitem(SortedDict *self, PyObject *key) {
+    PyObject *ret = PyDict_GetItemWithError(self->data, key);
+    Py_INCREF(ret);
+
+    return ret;
+}
+
+
+int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value) {
+    return PyDict_SetItem(self->data, key, value);
+}
+
+
+/* Sorted Dictionary Type Setup */
+static PyMappingMethods SortedDict_mapping = {
+	(lenfunc)SortedDict_len,
+	(binaryfunc)SortedDict_getitem,
+	(objobjargproc)SortedDict_setitem
+};
+
+
+static PyTypeObject SortedDictType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "sorteddict.sorteddict",
+    .tp_doc = "An SortedDict data structure",
+    .tp_basicsize = sizeof(SortedDict),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_new = SortedDict_new,
+    .tp_init = (initproc) SortedDict_init,
+    .tp_dealloc = (destructor) SortedDict_dealloc,
+    .tp_members = SortedDict_members,
+    .tp_methods = SortedDict_methods,
+    .tp_as_mapping = &SortedDict_mapping,
+};
+
+
+/* Module specific definitions and initilization */
 static PyModuleDef orderbookmodule = {
     PyModuleDef_HEAD_INIT,
     .m_name = "Orderbook",
@@ -106,7 +205,7 @@ static PyModuleDef orderbookmodule = {
 PyMODINIT_FUNC PyInit_orderbook(void)
 {
     PyObject *m;
-    if (PyType_Ready(&OrderbookType) < 0)
+    if (PyType_Ready(&OrderbookType) < 0 || PyType_Ready(&SortedDictType) < 0)
         return NULL;
 
     m = PyModule_Create(&orderbookmodule);
@@ -114,8 +213,15 @@ PyMODINIT_FUNC PyInit_orderbook(void)
         return NULL;
 
     Py_INCREF(&OrderbookType);
-    if (PyModule_AddObject(m, "Orderbook", (PyObject *) &OrderbookType) < 0) {
+    if (PyModule_AddObject(m, "orderbook", (PyObject *) &OrderbookType) < 0) {
         Py_DECREF(&OrderbookType);
+        Py_DECREF(m);
+        return NULL;
+    }
+
+    Py_INCREF(&SortedDictType);
+    if (PyModule_AddObject(m, "sorteddict", (PyObject *) &SortedDictType) < 0) {
+        Py_DECREF(&SortedDictType);
         Py_DECREF(m);
         return NULL;
     }
