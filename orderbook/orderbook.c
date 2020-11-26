@@ -98,6 +98,7 @@ static PyTypeObject OrderbookType = {
 typedef struct {
     PyObject_HEAD
     PyObject *data;
+    int ordering;
 } SortedDict;
 
 
@@ -118,6 +119,7 @@ static PyObject *SortedDict_new(PyTypeObject *type, PyObject *args, PyObject *kw
             Py_DECREF(self);
             return NULL;
         }
+        self->ordering = 0;
     }
     return (PyObject *) self;
 }
@@ -125,12 +127,31 @@ static PyObject *SortedDict_new(PyTypeObject *type, PyObject *args, PyObject *kw
 
 static int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
 {
+    static char *kwlist[] = {"ordering", NULL};
+    char *ordering = NULL;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|z", kwlist, &ordering)) {
+        return -1;
+    }
+
+    if (ordering) {
+        if (strcmp(ordering, "DESC") == 0) {
+            self->ordering = -1;
+        } else if (strcmp(ordering, "ASC") == 0) {
+            self->ordering = 1;
+        } else {
+            PyErr_SetString(PyExc_ValueError, "ordering must be one of ASC or DESC");
+            return -1;
+        }
+    }
+
     return 0;
 }
 
 
 static PyMemberDef SortedDict_members[] = {
     {"__data", T_OBJECT_EX, offsetof(SortedDict, data), READONLY, "internal data"},
+    {"__ordering", T_INT, offsetof(SortedDict, ordering), 0, "ordering flag"},
     {NULL}
 };
 
@@ -146,8 +167,7 @@ static PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored))
 
 
 static PyMethodDef SortedDict_methods[] = {
-    {"keys", (PyCFunction) SortedDict_keys, METH_NOARGS, "return a list of keys in the sorted dictionary"
-    },
+    {"keys", (PyCFunction) SortedDict_keys, METH_NOARGS, "return a list of keys in the sorted dictionary"},
     {NULL}
 };
 
@@ -158,14 +178,25 @@ Py_ssize_t SortedDict_len(SortedDict *self) {
 
 PyObject *SortedDict_getitem(SortedDict *self, PyObject *key) {
     PyObject *ret = PyDict_GetItemWithError(self->data, key);
-    Py_INCREF(ret);
+    if (ret) {
+        Py_INCREF(ret);
+        return ret;
+    }
+
+    if (!PyErr_Occurred()) {
+        PyErr_SetString(PyExc_KeyError, "key does not exist");
+    }
 
     return ret;
 }
 
-
 int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value) {
-    return PyDict_SetItem(self->data, key, value);
+    if (value) {
+        return PyDict_SetItem(self->data, key, value);
+    } else {
+        // setitem also called to for del (value will be null for deletes)
+        return PyDict_DelItem(self->data, key);
+    }
 }
 
 
