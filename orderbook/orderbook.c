@@ -86,6 +86,9 @@ static PyTypeObject OrderbookType = {
 static void SortedDict_dealloc(SortedDict *self)
 {
     Py_XDECREF(self->data);
+    if (self->keys && self->iterator_index != -1) {
+        Py_DECREF(self->keys);
+    }
     Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
@@ -100,7 +103,12 @@ static PyObject *SortedDict_new(PyTypeObject *type, PyObject *args, PyObject *kw
             Py_DECREF(self);
             return NULL;
         }
+        // 0 means it hasnt been set
         self->ordering = 0;
+        // -1 means uninitalized
+        self->iterator_index = -1;
+        self->keys = NULL;
+        self->dirty = false;
     }
     return (PyObject *) self;
 }
@@ -124,6 +132,9 @@ static int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
             PyErr_SetString(PyExc_ValueError, "ordering must be one of ASC or DESC");
             return -1;
         }
+    } else {
+        // default is ascending
+        self->ordering = 1;
     }
 
     return 0;
@@ -139,16 +150,51 @@ static PyMemberDef SortedDict_members[] = {
 
 static PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored))
 {
+    if (!self->dirty && self->keys) {
+        Py_INCREF(self->keys);
+        return self->keys;
+    }
+
     PyObject *keys = PyDict_Keys(self->data);
+    if (!keys) {
+        return NULL;
+    }
+
     if (PyList_Sort(keys) < 0) {
         return NULL;
     }
+
+    if (self->ordering == -1) {
+        if (PyList_Reverse(keys) < 0) {
+            return NULL;
+        }
+    }
+
+    if (self->keys) {
+        Py_DECREF(self->keys);
+    }
+
+    Py_INCREF(keys);
+    self->keys = keys;
+    self->dirty = false;
     return keys;
 }
 
 
+static PyObject* SortedDict_index(SortedDict *self, PyObject *index)
+{
+    long i = PyLong_AsLong(index);
+    if (PyErr_Occurred()) {
+        return NULL;
+    }
+
+
+
+}
+
 static PyMethodDef SortedDict_methods[] = {
     {"keys", (PyCFunction) SortedDict_keys, METH_NOARGS, "return a list of keys in the sorted dictionary"},
+    {"index", (PyCFunction) SortedDict_index, METH_O, "Return a key, value tuple at index N"},
     {NULL}
 };
 
@@ -172,11 +218,37 @@ PyObject *SortedDict_getitem(SortedDict *self, PyObject *key) {
 }
 
 int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value) {
+    self->dirty = true;
+
     if (value) {
         return PyDict_SetItem(self->data, key, value);
     } else {
         // setitem also called to for del (value will be null for deletes)
         return PyDict_DelItem(self->data, key);
+    }
+}
+
+/* iterator methods */
+PyObject *SortedDict_next(SortedDict *self) {
+    if (self->iterator_index == -1) {
+        self->iterator_index = 0;
+        SortedDict_keys(self, NULL);
+
+        Py_ssize_t size = PyList_Size(self->keys);
+        if (size == 0){
+            Py_DECREF(self->keys);
+            return NULL;
+        }
+        return PyList_GetItem(self->keys, self->iterator_index);
+    } else {
+        self->iterator_index++;
+        Py_ssize_t size = PyList_Size(self->keys);
+        if (size == self->iterator_index) {
+            self->iterator_index = -1;
+            Py_DECREF(self->keys);
+            return NULL;
+        }
+        return PyList_GetItem(self->keys, self->iterator_index);
     }
 }
 
@@ -202,6 +274,8 @@ static PyTypeObject SortedDictType = {
     .tp_members = SortedDict_members,
     .tp_methods = SortedDict_methods,
     .tp_as_mapping = &SortedDict_mapping,
+    .tp_iter  = PyObject_SelfIter,
+    .tp_iternext = (iternextfunc) SortedDict_next,
 };
 
 
@@ -225,14 +299,14 @@ PyMODINIT_FUNC PyInit_orderbook(void)
         return NULL;
 
     Py_INCREF(&OrderbookType);
-    if (PyModule_AddObject(m, "orderbook", (PyObject *) &OrderbookType) < 0) {
+    if (PyModule_AddObject(m, "OrderBook", (PyObject *) &OrderbookType) < 0) {
         Py_DECREF(&OrderbookType);
         Py_DECREF(m);
         return NULL;
     }
 
     Py_INCREF(&SortedDictType);
-    if (PyModule_AddObject(m, "sorteddict", (PyObject *) &SortedDictType) < 0) {
+    if (PyModule_AddObject(m, "SortedDict", (PyObject *) &SortedDictType) < 0) {
         Py_DECREF(&SortedDictType);
         Py_DECREF(m);
         return NULL;

@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdbool.h>
 
 #define PY_SSIZE_T_CLEAN
 #include "Python.h"
@@ -16,5 +17,9 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     PyObject *data;
+    PyObject *keys;
+    bool dirty;
     int ordering;
+    int iterator_index;
+    
 } SortedDict;
