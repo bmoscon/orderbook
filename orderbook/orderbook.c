@@ -194,8 +194,33 @@ static PyObject* SortedDict_index(SortedDict *self, PyObject *index)
         return NULL;
     }
 
+    SortedDict_keys(self, NULL);
+    if (!self->keys) {
+        PyErr_SetString(PyExc_IndexError, "index does not exist");
+        return NULL;
+    }
 
+    PyObject *key = PySequence_GetItem(self->keys, i);
+    if (!key) {
+        return NULL;
+    }
+    Py_INCREF(key);
 
+    PyObject *value = PyDict_GetItem(self->data, key);
+    if (!value) {
+        return value;
+    }
+    Py_INCREF(value);
+
+    PyObject *ret = PyTuple_New(2);
+    if (!ret) {
+        Py_DECREF(key);
+        Py_DECREF(value);
+        return NULL;
+    }
+    PyTuple_SetItem(ret, 0, key);
+    PyTuple_SetItem(ret, 1, value);
+    return ret;
 }
 
 static PyMethodDef SortedDict_methods[] = {

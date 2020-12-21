@@ -1,3 +1,5 @@
+import pytest
+
 from orderbook import SortedDict
 
 
@@ -30,3 +32,23 @@ def test_iteration():
     for index, key in enumerate(s):
         assert key == expected[index]
     assert index == 2
+
+
+def test_index():
+    s = SortedDict(ordering='DESC')
+    s[1] = "a"
+    s[3] = "b"
+    s[2] = "c"
+
+    assert s.index(0) == (3, "b")
+    assert s.index(1) == (2, "c")
+    assert s.index(2) == (1, "a")
+    assert s.index(-1) == (1, 'a')
+    assert s.index(-2) == (2, 'c')
+    assert s.index(-3) == (3, 'b')
+
+    with pytest.raises(IndexError):
+        assert s.index(3) == (2, "c")
+    
+    with pytest.raises(IndexError):
+        assert s.index(4) == (2, "c")
