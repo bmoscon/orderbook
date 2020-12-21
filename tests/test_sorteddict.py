@@ -7,7 +7,7 @@ def test_ascending():
     s[2] = "b"
     s[1] = "c"
 
-    assert s.keys() == [1, 2, 3]
+    assert s.keys() == (1, 2, 3)
 
 
 def test_descending():
@@ -16,11 +16,11 @@ def test_descending():
     s[3] = "b"
     s[2] = "c"
 
-    assert s.keys() == [3, 2, 1]
+    assert s.keys() == (3, 2, 1)
 
 
 def test_iteration():
-    expected = [3, 2, 1]
+    expected = (3, 2, 1)
     index = None
     s = SortedDict(ordering='DESC')
     s[1] = "a"

@@ -170,14 +170,20 @@ static PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored))
         }
     }
 
+     PyObject *ret = PySequence_Tuple(keys);
+     Py_DECREF(keys);
+     if (!ret) {
+         return NULL;
+     }
+
     if (self->keys) {
         Py_DECREF(self->keys);
     }
 
-    Py_INCREF(keys);
-    self->keys = keys;
+    Py_INCREF(ret);
+    self->keys = ret;
     self->dirty = false;
-    return keys;
+    return ret;
 }
 
 
@@ -234,21 +240,21 @@ PyObject *SortedDict_next(SortedDict *self) {
         self->iterator_index = 0;
         SortedDict_keys(self, NULL);
 
-        Py_ssize_t size = PyList_Size(self->keys);
+        Py_ssize_t size = PySequence_Fast_GET_SIZE(self->keys);
         if (size == 0){
             Py_DECREF(self->keys);
             return NULL;
         }
-        return PyList_GetItem(self->keys, self->iterator_index);
+        return PySequence_Fast_GET_ITEM(self->keys, self->iterator_index);
     } else {
         self->iterator_index++;
-        Py_ssize_t size = PyList_Size(self->keys);
+        Py_ssize_t size = PySequence_Fast_GET_SIZE(self->keys);
         if (size == self->iterator_index) {
             self->iterator_index = -1;
             Py_DECREF(self->keys);
             return NULL;
         }
-        return PyList_GetItem(self->keys, self->iterator_index);
+        return PySequence_Fast_GET_ITEM(self->keys, self->iterator_index);
     }
 }
 
