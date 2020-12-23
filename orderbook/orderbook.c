@@ -85,10 +85,14 @@ static PyTypeObject OrderbookType = {
 /* Sorted Dictionary */
 static void SortedDict_dealloc(SortedDict *self)
 {
-    Py_XDECREF(self->data);
     if (self->keys && self->iterator_index != -1) {
         Py_DECREF(self->keys);
     }
+
+    if (self->data) {
+        Py_DECREF(self->data);
+    }
+
     Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
@@ -270,7 +274,9 @@ PyObject *SortedDict_next(SortedDict *self) {
             Py_DECREF(self->keys);
             return NULL;
         }
-        return PySequence_Fast_GET_ITEM(self->keys, self->iterator_index);
+        PyObject *ret = PySequence_Fast_GET_ITEM(self->keys, self->iterator_index);
+        Py_INCREF(ret);
+        return ret;
     } else {
         self->iterator_index++;
         Py_ssize_t size = PySequence_Fast_GET_SIZE(self->keys);
@@ -279,7 +285,9 @@ PyObject *SortedDict_next(SortedDict *self) {
             Py_DECREF(self->keys);
             return NULL;
         }
-        return PySequence_Fast_GET_ITEM(self->keys, self->iterator_index);
+        PyObject *ret = PySequence_Fast_GET_ITEM(self->keys, self->iterator_index);
+        Py_INCREF(ret);
+        return ret;
     }
 }
 
