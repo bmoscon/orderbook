@@ -1,24 +1,60 @@
+from decimal import Decimal
 from functools import wraps
 import random
 import resource
 import time
 
 from sortedcontainers import SortedDict as sd
-from orderbook import SortedDict
+import requests
+
+from orderbook import SortedDict, OrderBook
 
 
-def profile(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        startm = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        startt = time.time()
-        ret = f(*args, **kwargs)
-        total_time = time.time() - startt
-        mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - startm
-        print("Time:", total_time)
-        print("Mem usage:", mem)
-        return ret
-    return wrapper
+data = requests.get("https://api-public.sandbox.pro.coinbase.com/products/BTC-USD/book?level=2").json()
+
+
+def profile(mem_usage):
+    def _profile(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            startm = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            startt = time.time()
+            ret = f(*args, **kwargs)
+            total_time = time.time() - startt
+            mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - startm
+            print("Time:", total_time)
+            if mem_usage:
+                print("Mem usage:", mem)
+            return ret
+        return wrapper
+    return _profile
+
+
+@profile(mem_usage=False)
+def profile_orderbook():
+    ob = OrderBook()
+
+    for side, d in data.items():
+        if side == 'bids':
+            for price, size, _ in d:
+                ob.bids[Decimal(price)] = size
+        elif side == 'asks':
+            for price, size, _ in d:
+                ob.asks[Decimal(price)] = size
+    ob.to_dict()
+
+
+@profile(mem_usage=False)
+def profile_orderbook_sd():
+    ob = {'bid': sd(), 'ask': sd()}
+
+    for side, d in data.items():
+        if side == 'bids':
+            for price, size, _ in d:
+                ob['bid'][Decimal(price)] = size
+        elif side == 'asks':
+            for price, size, _ in d:
+                ob['ask'][Decimal(price)] = size
 
 
 def random_data_test(size):
@@ -33,7 +69,7 @@ def random_data_test(size):
             values.append(random.uniform(-100000.0, 100000.0))
         values = set(values)
 
-    @profile
+    @profile(mem_usage=True)
     def test_ordered(dictionary):
         for v in values:
             dictionary[v] = str(v)
@@ -46,7 +82,7 @@ def random_data_test(size):
                 assert previous < key
             previous = key
 
-    @profile
+    @profile(mem_usage=True)
     def test_unordered(unordered):
         for v in values:
             unordered[v] = str(v)
@@ -73,4 +109,10 @@ def random_data_performance():
 
 
 if __name__ == "__main__":
+    print("Sorted Dict Performance\n")
     random_data_performance()
+    print("\n\nOrderbook Overall\n")
+    print("C lib OrderBook")
+    profile_orderbook()
+    print("Python lib OrderBook")
+    profile_orderbook_sd()
