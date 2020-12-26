@@ -90,3 +90,46 @@ def test_random_data():
         if previous:
             assert previous < key
         previous = key
+
+    previous = None
+    for key in desc:
+        assert key in values
+        assert str(key) == desc[key]
+        if previous:
+            assert previous > key
+        previous = key
+
+
+def test_to_dict():
+    random.seed()
+    values = []
+    asc = SortedDict(ordering='ASC')
+    desc = SortedDict(ordering='DESC')
+
+    for _ in range(2000):
+        values.append(random.uniform(0.0, 100000.0))
+    values = set(values)
+
+    for v in values:
+        asc[v] = str(v)
+        desc[v] = str(v)
+
+    d = asc.to_dict()
+    assert list(d.keys()) == list(asc.keys())
+    assert sorted(d.keys()) == list(d.keys())
+    previous = None
+    for key, val in d.items():
+        assert d[key] == asc[key]
+        if previous:
+            d[key] > previous
+        previous = d[key]
+
+    d = desc.to_dict()
+    assert list(d.keys()) == list(desc.keys())
+    assert list(reversed(sorted(d.keys()))) == list(d.keys())
+    previous = None
+    for key, val in d.items():
+        assert d[key] == desc[key]
+        if previous:
+            d[key] < previous
+        previous = d[key]

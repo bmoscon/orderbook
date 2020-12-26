@@ -198,7 +198,12 @@ static PyObject* SortedDict_index(SortedDict *self, PyObject *index)
         return NULL;
     }
 
-    SortedDict_keys(self, NULL);
+    PyObject *k = SortedDict_keys(self, NULL);
+    if (!k) {
+        return NULL;
+    }
+    Py_DECREF(k);
+
     if (!self->keys) {
         PyErr_SetString(PyExc_IndexError, "index does not exist");
         return NULL;
@@ -227,9 +232,33 @@ static PyObject* SortedDict_index(SortedDict *self, PyObject *index)
     return ret;
 }
 
+static PyObject* SortedDict_todict(SortedDict *self, PyObject *Py_UNUSED(ignored))
+{
+    PyObject *ret = PyDict_New();
+    if (!ret) {
+        return NULL;
+    }
+
+    PyObject *k = SortedDict_keys(self, NULL);
+    if (!k) {
+        return NULL;
+    }
+    Py_DECREF(k);
+
+    int len = PySequence_Length(self->keys);
+    for(int i = 0; i < len; ++i) {
+        PyObject *key = PyTuple_GET_ITEM(self->keys, i);
+        PyObject *value = PyDict_GetItem(self->data, key);
+        PyDict_SetItem(ret, key, value);
+    }
+
+    return ret;
+}
+
 static PyMethodDef SortedDict_methods[] = {
     {"keys", (PyCFunction) SortedDict_keys, METH_NOARGS, "return a list of keys in the sorted dictionary"},
     {"index", (PyCFunction) SortedDict_index, METH_O, "Return a key, value tuple at index N"},
+    {"to_dict", (PyCFunction) SortedDict_todict, METH_NOARGS, "return a python dictionary, sorted by keys"},
     {NULL}
 };
 
@@ -267,13 +296,18 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value) {
 PyObject *SortedDict_next(SortedDict *self) {
     if (self->iterator_index == -1) {
         self->iterator_index = 0;
-        SortedDict_keys(self, NULL);
+
+        PyObject *k = SortedDict_keys(self, NULL);
+        if (!k) {
+            return NULL;
+        }
+        Py_DECREF(k);
 
         Py_ssize_t size = PySequence_Fast_GET_SIZE(self->keys);
         if (size == 0){
-            Py_DECREF(self->keys);
             return NULL;
         }
+
         PyObject *ret = PySequence_Fast_GET_ITEM(self->keys, self->iterator_index);
         Py_INCREF(ret);
         return ret;

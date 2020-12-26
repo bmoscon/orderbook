@@ -1,4 +1,3 @@
-from decimal import Decimal
 from functools import wraps
 import random
 import resource
@@ -35,58 +34,43 @@ def random_data_test(size):
         values = set(values)
 
     @profile
-    def test_c():
+    def test_ordered(dictionary):
         for v in values:
-            asc[v] = str(v)
+            dictionary[v] = str(v)
 
         previous = None
-        for key in asc:
+        for key in dictionary:
             assert key in values
-            assert str(key) == asc[key]
+            assert str(key) == dictionary[key]
             if previous:
                 assert previous < key
             previous = key
-    
+
     @profile
-    def test_py():
+    def test_unordered(unordered):
         for v in values:
-            sorteddict[v] = str(v)
+            unordered[v] = str(v)
 
         previous = None
-        for key in sorteddict:
+        for key in unordered:
             assert key in values
-            assert str(key) == sorteddict[key]
-            if previous:
-                assert previous < key
-            previous = key
-    
-    @profile
-    def test_raw_py():
-        for v in values:
-            raw_python[v] = str(v)
-
-        previous = None
-        for key in raw_python:
-            assert key in values
-            assert str(key) == sorteddict[key]
+            assert str(key) == unordered[key]
             if previous:
                 assert previous != key
             previous = key
 
-    
-    print(f"C test with {size} entries")
-    test_c()
-    print(f"Python lib testwith {size} entries")
-    test_py()
-    print(f"Python dict testwith {size} entries")
-    test_raw_py()
+    print(f"C lib with {size} entries")
+    test_ordered(asc)
+    print(f"SortedDict Python lib with {size} entries")
+    test_ordered(sorteddict)
+    print(f"Python dict (non sorted) with {size} entries")
+    test_unordered(raw_python)
 
 
 def random_data_performance():
     for size in (10, 100, 200, 400, 500, 1000, 2000, 10000, 100000, 200000, 500000):
         random_data_test(size)
 
+
 if __name__ == "__main__":
     random_data_performance()
-
-    
