@@ -328,6 +328,7 @@ static PyMemberDef Orderbook_members[] = {
 };
 
 
+/* Orderbook methods */
 static PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored))
 {
     PyObject *ret = PyDict_New();
@@ -372,6 +373,49 @@ static PyMethodDef Orderbook_methods[] = {
 };
 
 
+/* Orderbook Mapping Functions */
+Py_ssize_t Orderbook_len(Orderbook *self) {
+	return SortedDict_len(self->bids) + SortedDict_len(self->asks);
+}
+
+PyObject *Orderbook_getitem(Orderbook *self, PyObject *key) {
+    if (!PyUnicode_Check(key)) {
+        PyErr_SetString(PyExc_ValueError, "key must one of bid/ask");
+        return NULL;
+    }
+
+    PyObject *str = PyUnicode_AsEncodedString(key, "UTF-8", "strict");
+    if (!str) {
+        return NULL;
+    }
+
+    char *key_str = PyBytes_AsString(str);
+
+    if (!strcmp(key_str, "bid") || !strcmp(key_str, "BID") || !strcmp(key_str, "bids") || !strcmp(key_str, "BIDS")) {
+        Py_INCREF(self->bids);
+        Py_DECREF(str);
+        return (PyObject *)self->bids;
+    }
+
+    if (!strcmp(key_str, "ask") || !strcmp(key_str, "ASK") || !strcmp(key_str, "asks") || !strcmp(key_str, "ASKS")) {
+        Py_INCREF(self->asks);
+        Py_DECREF(str);
+        return (PyObject *)self->asks;
+    }
+
+    printf("Key is %s\n", key_str);
+    Py_DECREF(str);
+    PyErr_SetString(PyExc_KeyError, "key does not exist");
+    return NULL;
+}
+
+
+/* Sorted Dictionary Type Setup */
+static PyMappingMethods Orderbook_mapping = {
+	(lenfunc)Orderbook_len,
+	(binaryfunc)Orderbook_getitem,
+};
+
 static PyTypeObject OrderbookType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "orderbook.orderbook",
@@ -384,6 +428,7 @@ static PyTypeObject OrderbookType = {
     .tp_dealloc = (destructor) Orderbook_dealloc,
     .tp_members = Orderbook_members,
     .tp_methods = Orderbook_methods,
+    .tp_as_mapping = &Orderbook_mapping,
 };
 
 
