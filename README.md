@@ -3,6 +3,10 @@
 [![License](https://img.shields.io/badge/license-GLPv3-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.7+-green.svg)
 [![PyPi](https://img.shields.io/badge/PyPi-order--book-brightgreen)](https://pypi.python.org/pypi/order-book)
+![coverage-lines](https://img.shields.io/badge/coverage%3A%20lines-84.6%25-blue)
+![coverage-functions](https://img.shields.io/badge/coverage%3A%20lines-84.6%25-blue)
+![coverage-functions](https://img.shields.io/badge/coverage%3A%20functions-100%25-blue)
+
 
 A ***fast*** orderbook implementation, in C, for Python
 
