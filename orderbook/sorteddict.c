@@ -268,7 +268,6 @@ PyObject *SortedDict_next(SortedDict *self)
         Py_ssize_t size = PySequence_Fast_GET_SIZE(self->keys);
         if (size == self->iterator_index) {
             self->iterator_index = -1;
-            Py_DECREF(self->keys);
             return NULL;
         }
         PyObject *ret = PySequence_Fast_GET_ITEM(self->keys, self->iterator_index);

@@ -7,7 +7,6 @@ associated with this software.
 from decimal import Decimal
 from functools import wraps
 import random
-import resource
 import time
 
 from sortedcontainers import SortedDict as sd
@@ -19,24 +18,18 @@ from order_book import SortedDict, OrderBook
 data = requests.get("https://api-public.sandbox.pro.coinbase.com/products/BTC-USD/book?level=2").json()
 
 
-def profile(mem_usage):
-    def _profile(f):
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            startm = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-            startt = time.time()
-            ret = f(*args, **kwargs)
-            total_time = time.time() - startt
-            mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - startm
-            print("Time:", total_time)
-            if mem_usage:
-                print("Mem usage:", mem)
-            return ret
-        return wrapper
-    return _profile
+def profile(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        startt = time.time()
+        ret = f(*args, **kwargs)
+        total_time = time.time() - startt
+        print("Time:", total_time)
+        return ret
+    return wrapper
 
 
-@profile(mem_usage=False)
+@profile
 def profile_orderbook():
     ob = OrderBook()
 
@@ -50,7 +43,7 @@ def profile_orderbook():
     ob.to_dict()
 
 
-@profile(mem_usage=False)
+@profile
 def profile_orderbook_sd():
     ob = {'bid': sd(), 'ask': sd()}
 
@@ -75,7 +68,7 @@ def random_data_test(size):
             values.append(random.uniform(-100000.0, 100000.0))
         values = set(values)
 
-    @profile(mem_usage=True)
+    @profile
     def test_ordered(dictionary):
         for v in values:
             dictionary[v] = str(v)
@@ -88,7 +81,7 @@ def random_data_test(size):
                 assert previous < key
             previous = key
 
-    @profile(mem_usage=True)
+    @profile
     def test_unordered(unordered):
         for v in values:
             unordered[v] = str(v)

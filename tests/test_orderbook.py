@@ -69,13 +69,13 @@ def test_orderbook_getitem():
 
 def test_orderbook_init():
     with pytest.raises(TypeError):
-        ob = OrderBook('a')
+        OrderBook('a')
 
     with pytest.raises(TypeError):
-        ob = OrderBook(blah=3)
+        OrderBook(blah=3)
 
     with pytest.raises(TypeError):
-        ob = OrderBook(max_depth='a')
+        OrderBook(max_depth='a')
 
 
 def test_orderbook_len():
@@ -111,7 +111,6 @@ def test_orderbook_keys():
 
     assert ob.bids.to_dict() == {1: 4}
     assert ob.bid.to_dict() == {1: 4}
-
 
     ob['asks'][1] = 1
     ob['ASKS'][1] = 2
