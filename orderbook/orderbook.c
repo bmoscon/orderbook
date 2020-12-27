@@ -1,3 +1,9 @@
+/*
+Copyright (C) 2020  Bryant Moscon - bmoscon@gmail.com
+
+Please see the LICENSE file for the terms and conditions
+associated with this software.
+*/
 #include "orderbook.h"
 
 
@@ -289,7 +295,7 @@ static PyMappingMethods SortedDict_mapping = {
 
 static PyTypeObject SortedDictType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "sorteddict.sorteddict",
+    .tp_name = "order_book.SortedDict",
     .tp_doc = "An SortedDict data structure",
     .tp_basicsize = sizeof(SortedDict),
     .tp_itemsize = 0,
@@ -451,7 +457,7 @@ static PyMappingMethods Orderbook_mapping = {
 
 static PyTypeObject OrderbookType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "orderbook.orderbook",
+    .tp_name = "order_book.OrderBook",
     .tp_doc = "An Orderbook data structure",
     .tp_basicsize = sizeof(Orderbook),
     .tp_itemsize = 0,
@@ -474,7 +480,7 @@ static PyModuleDef orderbookmodule = {
 };
 
 
-PyMODINIT_FUNC PyInit_orderbook(void)
+PyMODINIT_FUNC PyInit_order_book(void)
 {
     PyObject *m;
     if (PyType_Ready(&OrderbookType) < 0 || PyType_Ready(&SortedDictType) < 0)

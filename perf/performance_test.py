@@ -1,3 +1,9 @@
+'''
+Copyright (C) 2020  Bryant Moscon - bmoscon@gmail.com
+
+Please see the LICENSE file for the terms and conditions
+associated with this software.
+'''
 from decimal import Decimal
 from functools import wraps
 import random
@@ -7,7 +13,7 @@ import time
 from sortedcontainers import SortedDict as sd
 import requests
 
-from orderbook import SortedDict, OrderBook
+from order_book import SortedDict, OrderBook
 
 
 data = requests.get("https://api-public.sandbox.pro.coinbase.com/products/BTC-USD/book?level=2").json()

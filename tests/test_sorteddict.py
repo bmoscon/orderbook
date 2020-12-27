@@ -1,9 +1,15 @@
+'''
+Copyright (C) 2020  Bryant Moscon - bmoscon@gmail.com
+
+Please see the LICENSE file for the terms and conditions
+associated with this software.
+'''
 from decimal import Decimal
 import random
 
 import pytest
 
-from orderbook import SortedDict
+from order_book import SortedDict
 
 
 def test_ascending():
