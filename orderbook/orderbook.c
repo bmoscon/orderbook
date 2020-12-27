@@ -474,7 +474,7 @@ static PyTypeObject OrderbookType = {
 /* Module specific definitions and initilization */
 static PyModuleDef orderbookmodule = {
     PyModuleDef_HEAD_INIT,
-    .m_name = "Orderbook",
+    .m_name = "order_book",
     .m_doc = "Orderbook data structure",
     .m_size = -1,
 };
