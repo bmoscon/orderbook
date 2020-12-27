@@ -10,7 +10,7 @@ associated with this software.
 /* Sorted Dictionary */
 static void SortedDict_dealloc(SortedDict *self)
 {
-    if (self->keys && self->iterator_index != -1) {
+    if (self->keys) {
         Py_DECREF(self->keys);
     }
 
@@ -71,35 +71,38 @@ static int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
         self->data = copy;
     }
 
-    ordering = PyDict_GetItemString(kwds, "ordering");
-    if (!PyUnicode_Check(ordering)) {
-        PyErr_SetString(PyExc_ValueError, "ordering must be a string");
-        return -1;
-    }
 
-    PyObject *str = PyUnicode_AsEncodedString(ordering, "UTF-8", "strict");
-    if (!str) {
-        return -1;
-    }
-
-    char *value = PyBytes_AsString(str);
-
-    if (value) {
-        if (strcmp(value, "DESC") == 0) {
-            self->ordering = -1;
-        } else if (strcmp(value, "ASC") == 0) {
-            self->ordering = 1;
-        } else {
-            Py_DECREF(str);
-            PyErr_SetString(PyExc_ValueError, "ordering must be one of ASC or DESC");
+    if (kwds && PyDict_Check(kwds) && PyDict_Size(kwds) > 0) {
+        ordering = PyDict_GetItemString(kwds, "ordering");
+        if (!PyUnicode_Check(ordering)) {
+            PyErr_SetString(PyExc_ValueError, "ordering must be a string");
             return -1;
         }
+
+        PyObject *str = PyUnicode_AsEncodedString(ordering, "UTF-8", "strict");
+        if (!str) {
+            return -1;
+        }
+
+        char *value = PyBytes_AsString(str);
+
+        if (value) {
+            if (strcmp(value, "DESC") == 0) {
+                self->ordering = -1;
+            } else if (strcmp(value, "ASC") == 0) {
+                self->ordering = 1;
+            } else {
+                Py_DECREF(str);
+                PyErr_SetString(PyExc_ValueError, "ordering must be one of ASC or DESC");
+                return -1;
+            }
+        }
+        Py_DECREF(str);
     } else {
         // default is ascending
         self->ordering = 1;
     }
 
-    Py_DECREF(str);
     return 0;
 }
 

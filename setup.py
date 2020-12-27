@@ -6,6 +6,8 @@ associated with this software.
 '''
 from os import path
 from setuptools import setup, Extension, find_packages
+from setuptools.command.test import test as TestCommand
+import sys
 
 
 orderbook = Extension('order_book', sources=['orderbook/orderbook.c'])
@@ -18,6 +20,13 @@ def get_long_description():
         with open(path.join(repo_dir, filename), encoding="utf-8") as markdown_file:
             markdown.append(markdown_file.read())
     return "\n\n----\n\n".join(markdown)
+
+
+class Test(TestCommand):
+    def run_tests(self):
+        import pytest
+        errno = pytest.main(['tests/'])
+        sys.exit(errno)
 
 
 setup(
@@ -34,6 +43,7 @@ setup(
     packages=find_packages(exclude=['tests*']),
     license='License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
     tests_require=["pytest", "requests", "sortedcontainers"],
+    cmdclass={'test': Test},
     classifiers=[
         "Intended Audience :: Developers",
         "Development Status :: 3 - Alpha",

@@ -145,6 +145,9 @@ def test_init_from_dict():
     with pytest.raises(TypeError):
         asc = SortedDict("a", ordering='ASC')
 
+    with pytest.raises(TypeError):
+        asc = SortedDict({}, {}, ordering='ASC')
+
     asc = SortedDict({4: 'a', 1: 'c', 3: 'f', 6: 'j', 9: 'z', 2: 'p'}, ordering='ASC')
     assert asc.to_dict() == {1: 'c', 2: 'p', 3: 'f', 4: 'a', 6: 'j', 9: 'z'}
     assert list(asc.keys()) == [1, 2, 3, 4, 6, 9]
@@ -160,3 +163,13 @@ def test_invalid_ordering():
 
     with pytest.raises(ValueError):
         SortedDict(ordering=1)
+
+
+def test_default_ordering():
+    # default ordering is ascending
+    d = SortedDict()
+    d[3] = 'a'
+    d[2] = 'b'
+    d[1] = 'c'
+
+    assert list(d.keys()) == [1, 2, 3]
