@@ -1,2 +1,7 @@
 # Orderbook
-An orderbook implementation, in C, for Python
+
+[![License](https://img.shields.io/badge/license-GLPv3-blue.svg)](LICENSE)
+![Python](https://img.shields.io/badge/Python-3.7+-green.svg)
+[![PyPi](https://img.shields.io/badge/PyPi-order--book-brightgreen)](https://pypi.python.org/pypi/order-book)
+
+A ***fast*** orderbook implementation, in C, for Python
