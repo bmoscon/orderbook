@@ -4,4 +4,4 @@
 ![Python](https://img.shields.io/badge/Python-3.7+-green.svg)
 [![PyPi](https://img.shields.io/badge/PyPi-order--book-brightgreen)](https://pypi.python.org/pypi/order-book)
 
-An orderbook implementation, in C, for Python
+A ***fast*** orderbook implementation, in C, for Python
