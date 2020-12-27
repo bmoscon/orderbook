@@ -20,7 +20,7 @@ def get_long_description():
 
 
 setup(name='order_book',
-      version='0.0.1',
+      version='0.0.2',
       author="Bryant Moscon",
       author_email="bmoscon@gmail.com",
       description="Fast Orderbook Library for Python in C",
