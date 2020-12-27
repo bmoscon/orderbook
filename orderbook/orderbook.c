@@ -166,31 +166,29 @@ static PyObject* SortedDict_index(SortedDict *self, PyObject *index)
     }
     Py_DECREF(k);
 
-    if (!self->keys) {
-        PyErr_SetString(PyExc_IndexError, "index does not exist");
-        return NULL;
-    }
-
+    // new reference
     PyObject *key = PySequence_GetItem(self->keys, i);
     if (!key) {
         return NULL;
     }
-    Py_INCREF(key);
 
+    // borrowed reference
     PyObject *value = PyDict_GetItem(self->data, key);
     if (!value) {
+        Py_DECREF(key);
         return value;
     }
-    Py_INCREF(value);
 
     PyObject *ret = PyTuple_New(2);
     if (!ret) {
         Py_DECREF(key);
-        Py_DECREF(value);
         return NULL;
     }
+
     PyTuple_SetItem(ret, 0, key);
+    Py_INCREF(value);
     PyTuple_SetItem(ret, 1, value);
+
     return ret;
 }
 

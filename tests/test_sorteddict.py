@@ -173,3 +173,50 @@ def test_default_ordering():
     d[1] = 'c'
 
     assert list(d.keys()) == [1, 2, 3]
+
+
+def test_illegal_index():
+    d = SortedDict()
+    with pytest.raises(IndexError):
+        d.index(0)
+
+    with pytest.raises(TypeError):
+        d.index('a')
+
+    with pytest.raises(TypeError):
+        d.index()
+
+
+def test_empty_keys():
+    d = SortedDict()
+    assert d.keys() == ()
+
+
+def test_keys_reference_counting():
+    d = SortedDict()
+    d[1] = 'a'
+    assert d.keys() == (1,)
+
+    d[2] = 'b'
+    assert d.keys() == (1,2)
+
+
+def test_invalid_key():
+    d = SortedDict()
+
+    with pytest.raises(KeyError):
+        d[1]
+
+    with pytest.raises(KeyError):
+        del d[1]
+
+
+def test_del():
+    d = SortedDict()
+    d[3] = 'a'
+    d[2] = 'b'
+    d[1] = 'c'
+
+    del d[2]
+
+    assert d.keys() == (1, 3)
