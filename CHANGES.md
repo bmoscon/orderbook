@@ -6,6 +6,7 @@
   * Bugfix: Fix reference counting in index method in SortedDict
   * Feature: New unit tests to improve SortedDict coverage
   * Feature: Modularize files
+  * Feature: Add ability to set bids/asks to dictionaries via attributes or \[ \]
 
 ### 0.0.1 (2020-12-26)
   * Initial Release
