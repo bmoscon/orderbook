@@ -81,6 +81,7 @@ static PyTypeObject SortedDictType = {
     .tp_as_mapping = &SortedDict_mapping,
     .tp_iter  = PyObject_SelfIter,
     .tp_iternext = (iternextfunc) SortedDict_next,
+    .tp_dictoffset = 0,
 };
 
 #endif

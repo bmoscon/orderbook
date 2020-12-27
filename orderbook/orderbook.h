@@ -35,13 +35,15 @@ Py_ssize_t Orderbook_len(Orderbook *self);
 PyObject *Orderbook_getitem(Orderbook *self, PyObject *key);
 int Orderbook_setitem(Orderbook *self, PyObject *key, PyObject *value);
 
+int Orderbook_setattr(PyObject *self, PyObject *attr, PyObject *value);
+
 
 // Orderbook class members
 static PyMemberDef Orderbook_members[] = {
-    {"bids", T_OBJECT_EX, offsetof(Orderbook, bids), READONLY, "bids"},
-    {"bid", T_OBJECT_EX, offsetof(Orderbook, bids), READONLY, "bids"},
-    {"asks", T_OBJECT_EX, offsetof(Orderbook, asks), READONLY, "asks"},
-    {"ask", T_OBJECT_EX, offsetof(Orderbook, asks), READONLY, "asks"},
+    {"bids", T_OBJECT_EX, offsetof(Orderbook, bids), 0, "bids"},
+    {"bid", T_OBJECT_EX, offsetof(Orderbook, bids), 0, "bids"},
+    {"asks", T_OBJECT_EX, offsetof(Orderbook, asks), 0, "asks"},
+    {"ask", T_OBJECT_EX, offsetof(Orderbook, asks), 0, "asks"},
     {"max_depth", T_INT, offsetof(Orderbook, max_depth), READONLY, "Maximum book depth"},
     {NULL}
 };
@@ -76,6 +78,8 @@ static PyTypeObject OrderbookType = {
     .tp_members = Orderbook_members,
     .tp_methods = Orderbook_methods,
     .tp_as_mapping = &Orderbook_mapping,
+    .tp_setattro = (setattrofunc) Orderbook_setattr,
+    .tp_dictoffset = 0,
 };
 
 

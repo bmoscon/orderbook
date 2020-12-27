@@ -117,20 +117,18 @@ PyObject *Orderbook_getitem(Orderbook *self, PyObject *key)
     }
 
     int key_int = check_key(PyBytes_AsString(str));
+    Py_DECREF(str);
 
     //1 is bid, 2 is ask
     if (key_int == 1) {
         Py_INCREF(self->bids);
-        Py_DECREF(str);
         return (PyObject *)self->bids;
     } else if (key_int == 2) {
         Py_INCREF(self->asks);
-        Py_DECREF(str);
         return (PyObject *)self->asks;
     }
 
     // key not or bid or ask
-    Py_DECREF(str);
     PyErr_SetString(PyExc_KeyError, "key does not exist");
     return NULL;
 }
@@ -138,20 +136,58 @@ PyObject *Orderbook_getitem(Orderbook *self, PyObject *key)
 
 int Orderbook_setitem(Orderbook *self, PyObject *key, PyObject *value)
 {
-    return -1;
-    /*
-    if (!PyDict_Check(value)) {
-        PyErr_SetString(PyExc_ValueError, "can only set to a dict");
-        return -1
+    if (!PyUnicode_Check(key)) {
+        PyErr_SetString(PyExc_ValueError, "key must one of bid/ask");
+        return -1;
     }
 
-    if (value) {
-        return PyDict_SetItem(self->data, key, value);
-    } else {
-        // setitem also called to for del (value will be null for deletes)
-        return PyDict_DelItem(self->data, key);
+    PyObject *str = PyUnicode_AsEncodedString(key, "UTF-8", "strict");
+    if (!str) {
+        return -1;
     }
-    */
+
+    int key_int = check_key(PyBytes_AsString(str));
+    Py_DECREF(key);
+
+    if (key_int == -1) {
+        PyErr_SetString(PyExc_ValueError, "key must one of bid/ask");
+        Py_DECREF(str);
+        return -1;
+    }
+
+    if (!value) {
+        PyErr_SetString(PyExc_ValueError, "cannot delete");
+        return -1;
+    }
+
+    if (!PyDict_Check(value)) {
+        PyErr_SetString(PyExc_ValueError, "value must be a dict");
+        return -1;
+    }
+
+    PyObject *copy = PyDict_Copy(value);
+    if (!copy) {
+        return -1;
+    }
+
+    //1 is bid, 2 is ask
+    if (key_int == 1) {
+        Py_DECREF(self->bids->data);
+        self->bids->data = copy;
+        self->bids->dirty = true;
+    } else if (key_int == 2) {
+        Py_DECREF(self->asks->data);
+        self->asks->data = copy;
+        self->asks->dirty = true;
+    }
+
+    return 0;
+}
+
+
+int Orderbook_setattr(PyObject *self, PyObject *attr, PyObject *value)
+{
+    return Orderbook_setitem((Orderbook *)self, attr, value);
 }
 
 

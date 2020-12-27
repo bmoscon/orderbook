@@ -120,3 +120,40 @@ def test_orderbook_keys():
 
     assert ob.asks.to_dict() == {1: 4}
     assert ob.ask.to_dict() == {1: 4}
+
+
+def test_orderbook_setitem():
+    ob = OrderBook()
+
+    data = requests.get("https://api-public.sandbox.pro.coinbase.com/products/BTC-USD/book?level=2").json()
+    ob.bids = {Decimal(price): size for price, size, _ in data['bids']}
+    ob.asks = {Decimal(price): size for price, size, _ in data['asks']}
+
+    assert ob.bids.index(0)[0] < ob.asks.index(0)[0]
+    assert ob.bids.index(-1)[0] < ob.asks.index(-1)[0]
+
+    assert ob.bids.index(-1)[0] < ob.bids.index(0)[0]
+    assert ob.asks.index(-1)[0] > ob.asks.index(0)[0]
+
+
+def test_orderbook_getitem_invalid():
+    ob = OrderBook()
+
+    with pytest.raises(ValueError):
+        ob[1][1] = 'a'
+
+
+def test_orderbook_setitem_invalid():
+    ob = OrderBook()
+
+    with pytest.raises(ValueError):
+        ob[123] = {}
+
+    with pytest.raises(ValueError):
+        ob['invalid'] = {}
+
+    with pytest.raises(ValueError):
+        del ob['bids']
+
+    with pytest.raises(ValueError):
+        ob['bids'] = 'a'
