@@ -5,7 +5,9 @@ Please see the LICENSE file for the terms and conditions
 associated with this software.
 '''
 from decimal import Decimal
+import random
 
+import pytest
 import requests
 
 from order_book import OrderBook
@@ -59,3 +61,62 @@ def test_orderbook_getitem():
 
     assert ob.bids.index(-1)[0] < ob.bids.index(0)[0]
     assert ob.asks.index(-1)[0] > ob.asks.index(0)[0]
+
+    with pytest.raises(KeyError):
+        # legal keys are BID, bid, BIDS, bids, ASK, ask, ASKS, asks
+        ob['invalid'][1] = 3
+
+
+def test_orderbook_init():
+    with pytest.raises(TypeError):
+        ob = OrderBook('a')
+
+    with pytest.raises(TypeError):
+        ob = OrderBook(blah=3)
+
+    with pytest.raises(TypeError):
+        ob = OrderBook(max_depth='a')
+
+
+def test_orderbook_len():
+    random.seed()
+    bids = []
+    asks = []
+
+    for _ in range(500):
+        bids.append(random.uniform(0.0, 100000.0))
+    bids = list(set(bids))
+
+    for _ in range(500):
+        asks.append(random.uniform(0.0, 100000.0))
+    asks = list(set(asks))
+
+    ob = OrderBook()
+
+    for b in bids:
+        ob['BIDS'][b] = str(b)
+    for a in asks:
+        ob['ASKS'][a] = str(a)
+
+    assert len(ob) == len(asks) + len(bids)
+
+
+def test_orderbook_keys():
+    ob = OrderBook()
+
+    ob['bids'][1] = 1
+    ob['BIDS'][1] = 2
+    ob['bid'][1] = 3
+    ob['BID'][1] = 4
+
+    assert ob.bids.to_dict() == {1: 4}
+    assert ob.bid.to_dict() == {1: 4}
+
+
+    ob['asks'][1] = 1
+    ob['ASKS'][1] = 2
+    ob['ask'][1] = 3
+    ob['ASK'][1] = 4
+
+    assert ob.asks.to_dict() == {1: 4}
+    assert ob.ask.to_dict() == {1: 4}

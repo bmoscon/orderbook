@@ -7,6 +7,18 @@ associated with this software.
 #include "orderbook.h"
 
 
+static int check_key(const char *key){
+    if (!strcmp(key, "bid") || !strcmp(key, "BID") || !strcmp(key, "bids") || !strcmp(key, "BIDS")) {
+        return 1;
+    }
+
+    if (!strcmp(key, "ask") || !strcmp(key, "ASK") || !strcmp(key, "asks") || !strcmp(key, "ASKS")) {
+        return 2;
+    }
+
+    return -1;
+}
+
 /* Sorted Dictionary */
 static void SortedDict_dealloc(SortedDict *self)
 {
@@ -363,7 +375,9 @@ static int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
 
 static PyMemberDef Orderbook_members[] = {
     {"bids", T_OBJECT_EX, offsetof(Orderbook, bids), READONLY, "bids"},
+    {"bid", T_OBJECT_EX, offsetof(Orderbook, bids), READONLY, "bids"},
     {"asks", T_OBJECT_EX, offsetof(Orderbook, asks), READONLY, "asks"},
+    {"ask", T_OBJECT_EX, offsetof(Orderbook, asks), READONLY, "asks"},
     {"max_depth", T_INT, offsetof(Orderbook, max_depth), READONLY, "Maximum book depth"},
     {NULL}
 };
@@ -404,6 +418,8 @@ static PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored))
         return NULL;
     }
 
+    Py_DECREF(asks);
+    Py_DECREF(bids);
     return ret;
 }
 
@@ -430,32 +446,53 @@ PyObject *Orderbook_getitem(Orderbook *self, PyObject *key) {
         return NULL;
     }
 
-    char *key_str = PyBytes_AsString(str);
+    int key_int = check_key(PyBytes_AsString(str));
 
-    if (!strcmp(key_str, "bid") || !strcmp(key_str, "BID") || !strcmp(key_str, "bids") || !strcmp(key_str, "BIDS")) {
+    //1 is bid, 2 is ask
+    if (key_int == 1) {
         Py_INCREF(self->bids);
         Py_DECREF(str);
         return (PyObject *)self->bids;
-    }
-
-    if (!strcmp(key_str, "ask") || !strcmp(key_str, "ASK") || !strcmp(key_str, "asks") || !strcmp(key_str, "ASKS")) {
+    } else if (key_int == 2) {
         Py_INCREF(self->asks);
         Py_DECREF(str);
         return (PyObject *)self->asks;
     }
 
+    // key not or bid or ask
     Py_DECREF(str);
     PyErr_SetString(PyExc_KeyError, "key does not exist");
     return NULL;
 }
 
 
-/* Sorted Dictionary Type Setup */
+int Orderbook_setitem(Orderbook *self, PyObject *key, PyObject *value) {
+    return -1;
+    /*
+    if (!PyDict_Check(value)) {
+        PyErr_SetString(PyExc_ValueError, "can only set to a dict");
+        return -1
+    }
+
+    if (value) {
+        return PyDict_SetItem(self->data, key, value);
+    } else {
+        // setitem also called to for del (value will be null for deletes)
+        return PyDict_DelItem(self->data, key);
+    }
+    */
+}
+
+
+/* Orderbook mapping functions */
 static PyMappingMethods Orderbook_mapping = {
 	(lenfunc)Orderbook_len,
 	(binaryfunc)Orderbook_getitem,
+    (objobjargproc)Orderbook_setitem
 };
 
+
+/* Orderbook Type Setup */
 static PyTypeObject OrderbookType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "order_book.OrderBook",
