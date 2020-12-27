@@ -40,7 +40,7 @@ print(f"Best ask price: {price} size: {size}")
 
 print(f"The spread is {ob.asks.index(0)[0] - ob.bids.index(0)[0]}\n\n")
 
-# Data is accessible via iterations
+# Data is accessible via iteration
 
 print("Bids")
 for price in ob.bids:
