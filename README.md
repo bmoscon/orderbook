@@ -8,7 +8,7 @@ A ***fast*** orderbook implementation, in C, for Python
 
 ### Installation
 
-The preferable way to install is via `pip` - `pip install order-book`. Installing from source will require a compiler and can be done with setuptools: `python setup.py develop`. 
+The preferable way to install is via `pip` - `pip install order-book`. Installing from source will require a compiler and can be done with setuptools: `python setup.py install`. 
 
 
 ### Running code coverage
