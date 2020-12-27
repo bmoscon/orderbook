@@ -39,19 +39,52 @@ static PyObject *SortedDict_new(PyTypeObject *type, PyObject *args, PyObject *kw
 
 static int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
 {
-    static char *kwlist[] = {"ordering", NULL};
-    char *ordering = NULL;
+    PyObject *ordering = NULL;
+    PyObject *dict = NULL;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|z", kwlist, &ordering)) {
+    if (PyTuple_Size(args) > 1) {
+        PyErr_SetString(PyExc_TypeError, "function takes at most 1 argument");
         return -1;
     }
 
-    if (ordering) {
-        if (strcmp(ordering, "DESC") == 0) {
+    if (PyTuple_Size(args) == 1) {
+        dict = PyTuple_GetItem(args, 0);
+        if (!dict) {
+            return -1;
+        }
+
+        if (!PyDict_Check(dict)) {
+            PyErr_SetString(PyExc_TypeError, "function accepts only dictionaries as an argument");
+            return -1;
+        }
+
+        PyObject *copy = PyDict_Copy(dict);
+        if (self->data) {
+            Py_DECREF(self->data);
+        }
+        self->data = copy;
+    }
+
+    ordering = PyDict_GetItemString(kwds, "ordering");
+    if (!PyUnicode_Check(ordering)) {
+        PyErr_SetString(PyExc_ValueError, "ordering must be a string");
+        return -1;
+    }
+
+    PyObject *str = PyUnicode_AsEncodedString(ordering, "UTF-8", "strict");
+    if (!str) {
+        return -1;
+    }
+
+    char *value = PyBytes_AsString(str);
+
+    if (value) {
+        if (strcmp(value, "DESC") == 0) {
             self->ordering = -1;
-        } else if (strcmp(ordering, "ASC") == 0) {
+        } else if (strcmp(value, "ASC") == 0) {
             self->ordering = 1;
         } else {
+            Py_DECREF(str);
             PyErr_SetString(PyExc_ValueError, "ordering must be one of ASC or DESC");
             return -1;
         }
@@ -60,6 +93,7 @@ static int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
         self->ordering = 1;
     }
 
+    Py_DECREF(str);
     return 0;
 }
 
@@ -321,9 +355,9 @@ static int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
 
 
 static PyMemberDef Orderbook_members[] = {
-    {"bids", T_OBJECT_EX, offsetof(Orderbook, bids), 0, "bids"},
-    {"asks", T_OBJECT_EX, offsetof(Orderbook, asks), 0, "asks"},
-    {"max_depth", T_INT, offsetof(Orderbook, max_depth), 0, "Maximum book depth"},
+    {"bids", T_OBJECT_EX, offsetof(Orderbook, bids), READONLY, "bids"},
+    {"asks", T_OBJECT_EX, offsetof(Orderbook, asks), READONLY, "asks"},
+    {"max_depth", T_INT, offsetof(Orderbook, max_depth), READONLY, "Maximum book depth"},
     {NULL}
 };
 
@@ -403,7 +437,6 @@ PyObject *Orderbook_getitem(Orderbook *self, PyObject *key) {
         return (PyObject *)self->asks;
     }
 
-    printf("Key is %s\n", key_str);
     Py_DECREF(str);
     PyErr_SetString(PyExc_KeyError, "key does not exist");
     return NULL;

@@ -133,3 +133,24 @@ def test_to_dict():
         if previous:
             d[key] < previous
         previous = d[key]
+
+
+def test_init_from_dict():
+    with pytest.raises(TypeError):
+        asc = SortedDict("a", ordering='ASC')
+
+    asc = SortedDict({4: 'a', 1: 'c', 3: 'f', 6: 'j', 9: 'z', 2: 'p'}, ordering='ASC')
+    assert asc.to_dict() == {1: 'c', 2: 'p', 3: 'f', 4: 'a', 6: 'j', 9: 'z'}
+    assert list(asc.keys()) == [1, 2, 3, 4, 6, 9]
+
+    desc = SortedDict({4: 'a', 1: 'c', 3: 'f', 6: 'j', 9: 'z', 2: 'p'}, ordering='DESC')
+    assert desc.to_dict() == {1: 'c', 2: 'p', 3: 'f', 4: 'a', 6: 'j', 9: 'z'}
+    assert list(desc.keys()) == [9, 6, 4, 3, 2, 1]
+
+
+def test_invalid_ordering():
+    with pytest.raises(ValueError):
+        SortedDict(ordering='D')
+
+    with pytest.raises(ValueError):
+        SortedDict(ordering=1)
