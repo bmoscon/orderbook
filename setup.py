@@ -4,13 +4,15 @@ Copyright (C) 2020  Bryant Moscon - bmoscon@gmail.com
 Please see the LICENSE file for the terms and conditions
 associated with this software.
 '''
+import glob
 from os import path
 from setuptools import setup, Extension, find_packages
 from setuptools.command.test import test as TestCommand
 import sys
 
 
-orderbook = Extension('order_book', sources=['orderbook/orderbook.c'])
+sources = glob.glob('orderbook/*.c')
+orderbook = Extension('order_book', sources=sources)
 
 
 def get_long_description():
