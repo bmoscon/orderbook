@@ -18,7 +18,7 @@ from order_book import OrderBook
 ob = OrderBook()
 
 # get some orderbook data
-data = requests.get("https://api-public.sandbox.pro.coinbase.com/products/BTC-USD/book?level=2").json()
+data = requests.get("https://api.pro.coinbase.com/products/BTC-USD/book?level=2").json()
 
 ob.bids = {Decimal(price): size for price, size, _ in data['bids']}
 ob.asks = {Decimal(price): size for price, size, _ in data['asks']}

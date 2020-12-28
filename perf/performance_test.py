@@ -15,7 +15,7 @@ import requests
 from order_book import SortedDict, OrderBook
 
 
-data = requests.get("https://api-public.sandbox.pro.coinbase.com/products/BTC-USD/book?level=2").json()
+data = requests.get("https://api.pro.coinbase.com/products/BTC-USD/book?level=2").json()
 
 
 def profile(f):

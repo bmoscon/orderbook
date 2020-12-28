@@ -16,7 +16,7 @@ from order_book import OrderBook
 def populate_orderbook():
     ob = OrderBook()
 
-    data = requests.get("https://api-public.sandbox.pro.coinbase.com/products/BTC-USD/book?level=2").json()
+    data = requests.get("https://api.pro.coinbase.com/products/BTC-USD/book?level=2").json()
     for side, d in data.items():
         if side == 'bids':
             for price, size, _ in d:
@@ -50,7 +50,7 @@ def test_to_dict():
 def test_orderbook_getitem():
     ob = OrderBook()
 
-    data = requests.get("https://api-public.sandbox.pro.coinbase.com/products/BTC-USD/book?level=2").json()
+    data = requests.get("https://api.pro.coinbase.com/products/BTC-USD/book?level=2").json()
     for side, d in data.items():
         if side in {'bids', 'asks'}:
             for price, size, _ in d:
@@ -124,7 +124,7 @@ def test_orderbook_keys():
 def test_orderbook_setitem():
     ob = OrderBook()
 
-    data = requests.get("https://api-public.sandbox.pro.coinbase.com/products/BTC-USD/book?level=2").json()
+    data = requests.get("https://api.pro.coinbase.com/products/BTC-USD/book?level=2").json()
     ob.bids = {Decimal(price): size for price, size, _ in data['bids']}
     ob.asks = {Decimal(price): size for price, size, _ in data['asks']}
 
