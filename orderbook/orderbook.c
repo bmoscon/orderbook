@@ -128,7 +128,7 @@ PyObject *Orderbook_getitem(Orderbook *self, PyObject *key)
         return (PyObject *)self->asks;
     }
 
-    // key not or bid or ask
+    // key not bid or ask
     PyErr_SetString(PyExc_KeyError, "key does not exist");
     return NULL;
 }
