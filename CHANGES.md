@@ -1,5 +1,8 @@
 ## Changelog
 
+### 0.1.0
+  * Use enums to make code more readable
+
 ### 0.0.2 (2020-12-27)
   * Bugfix: Fix sorted dictionary arg parsing
   * Feature: Coverage report generation for C library
