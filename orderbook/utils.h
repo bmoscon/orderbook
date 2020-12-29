@@ -5,4 +5,10 @@ Please see the LICENSE file for the terms and conditions
 associated with this software.
 */
 
-int check_key(const char *key);
+enum side_e {
+    BID,
+    ASK,
+    INVALID_SIDE
+};
+
+enum side_e check_key(const char *key);

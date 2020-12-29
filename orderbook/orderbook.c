@@ -22,7 +22,7 @@ static PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwd
     self = (Orderbook *) type->tp_alloc(type, 0);
     if (self != NULL) {
         self->bids = (SortedDict *)SortedDict_new(&SortedDictType, NULL, NULL);
-        self->bids->ordering = -1;
+        self->bids->ordering = DESCENDING;
         if (!self->bids) {
             Py_DECREF(self);
             return NULL;
@@ -30,7 +30,7 @@ static PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwd
         Py_INCREF(self->bids);
 
         self->asks = (SortedDict *)SortedDict_new(&SortedDictType, NULL, NULL);
-        self->asks->ordering = 1;
+        self->asks->ordering = ASCENDING;
         if (!self->asks) {
             Py_DECREF(self->bids);
             Py_DECREF(self);
@@ -116,14 +116,13 @@ PyObject *Orderbook_getitem(Orderbook *self, PyObject *key)
         return NULL;
     }
 
-    int key_int = check_key(PyBytes_AsString(str));
+    enum side_e key_int = check_key(PyBytes_AsString(str));
     Py_DECREF(str);
 
-    //1 is bid, 2 is ask
-    if (key_int == 1) {
+    if (key_int == BID) {
         Py_INCREF(self->bids);
         return (PyObject *)self->bids;
-    } else if (key_int == 2) {
+    } else if (key_int == ASK) {
         Py_INCREF(self->asks);
         return (PyObject *)self->asks;
     }
@@ -146,10 +145,10 @@ int Orderbook_setitem(Orderbook *self, PyObject *key, PyObject *value)
         return -1;
     }
 
-    int key_int = check_key(PyBytes_AsString(str));
+    enum side_e key_int = check_key(PyBytes_AsString(str));
     Py_DECREF(key);
 
-    if (key_int == -1) {
+    if (key_int == INVALID_SIDE) {
         PyErr_SetString(PyExc_ValueError, "key must one of bid/ask");
         Py_DECREF(str);
         return -1;
@@ -170,12 +169,11 @@ int Orderbook_setitem(Orderbook *self, PyObject *key, PyObject *value)
         return -1;
     }
 
-    //1 is bid, 2 is ask
-    if (key_int == 1) {
+    if (key_int == BID) {
         Py_DECREF(self->bids->data);
         self->bids->data = copy;
         self->bids->dirty = true;
-    } else if (key_int == 2) {
+    } else if (key_int == ASK) {
         Py_DECREF(self->asks->data);
         self->asks->data = copy;
         self->asks->dirty = true;

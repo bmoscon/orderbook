@@ -16,13 +16,19 @@ associated with this software.
 #include "structmember.h"
 
 
+enum Ordering {
+    ASCENDING,
+    DESCENDING,
+    INVALID_ORDERING
+};
+
 typedef struct {
     PyObject_HEAD
     PyObject *data;
     PyObject *keys;
-    bool dirty;
-    int ordering;
+    enum Ordering ordering;
     int iterator_index;
+    bool dirty;
 } SortedDict;
 
 

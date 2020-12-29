@@ -34,7 +34,7 @@ PyObject *SortedDict_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
             return NULL;
         }
         // 0 means it hasnt been set
-        self->ordering = 0;
+        self->ordering = INVALID_ORDERING;
         // -1 means uninitalized
         self->iterator_index = -1;
         self->keys = NULL;
@@ -89,9 +89,9 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
 
         if (value) {
             if (strcmp(value, "DESC") == 0) {
-                self->ordering = -1;
+                self->ordering = DESCENDING;
             } else if (strcmp(value, "ASC") == 0) {
-                self->ordering = 1;
+                self->ordering = ASCENDING;
             } else {
                 Py_DECREF(str);
                 PyErr_SetString(PyExc_ValueError, "ordering must be one of ASC or DESC");
@@ -101,7 +101,7 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
         Py_DECREF(str);
     } else {
         // default is ascending
-        self->ordering = 1;
+        self->ordering = ASCENDING;
     }
 
     return 0;
@@ -124,7 +124,7 @@ PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored))
         return NULL;
     }
 
-    if (self->ordering == -1) {
+    if (self->ordering == DESCENDING) {
         if (PyList_Reverse(keys) < 0) {
             return NULL;
         }

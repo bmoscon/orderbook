@@ -5,17 +5,18 @@ Please see the LICENSE file for the terms and conditions
 associated with this software.
 */
 #include <string.h>
+#include "utils.h"
 
 
-int check_key(const char *key)
+enum side_e check_key(const char *key)
 {
     if (!strcmp(key, "bid") || !strcmp(key, "BID") || !strcmp(key, "bids") || !strcmp(key, "BIDS")) {
-        return 1;
+        return BID;
     }
 
     if (!strcmp(key, "ask") || !strcmp(key, "ASK") || !strcmp(key, "asks") || !strcmp(key, "ASKS")) {
-        return 2;
+        return ASK;
     }
 
-    return -1;
+    return INVALID_SIDE;
 }
