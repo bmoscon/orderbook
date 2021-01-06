@@ -131,3 +131,4 @@ dmypy.json
 .vscode/
 
 coverage.info
+.DS_Store
