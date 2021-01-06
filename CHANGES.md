@@ -2,6 +2,7 @@
 
 ### 0.1.0
   * Use enums to make code more readable
+  * Add manifest file to ensure headers and changes file are included in sdist builds
 
 ### 0.0.2 (2020-12-27)
   * Bugfix: Fix sorted dictionary arg parsing
