@@ -33,8 +33,8 @@ PyObject *SortedDict_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
             Py_DECREF(self);
             return NULL;
         }
-        // 0 means it hasnt been set
-        self->ordering = INVALID_ORDERING;
+
+	self->ordering = INVALID_ORDERING;
         // -1 means uninitalized
         self->iterator_index = -1;
         self->keys = NULL;
