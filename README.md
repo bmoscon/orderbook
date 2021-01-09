@@ -71,7 +71,7 @@ The preferable way to install is via `pip` - `pip install order-book`. Installin
 
 ### Running code coverage
 
-The script `coverage.sh` will compile the source using the `-coverage` `CFLAG`, run the unit tests, and build a coverage report in HTML. The script contains some dependencies that may need to be installed (coverage, lcov, genhtml).
+The script `coverage.sh` will compile the source using the `-coverage` `CFLAG`, run the unit tests, and build a coverage report in HTML. The script uses tools that may need to be installed (coverage, lcov, genhtml).
 
 
 ### Running the performance tests
