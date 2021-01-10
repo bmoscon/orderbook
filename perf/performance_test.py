@@ -13,6 +13,7 @@ from sortedcontainers import SortedDict as sd
 import requests
 
 from order_book import SortedDict, OrderBook
+from pyorderbook import OrderBook as PythonOrderbook, SortedDict as PythonSortedDict
 
 
 data = requests.get("https://api.pro.coinbase.com/products/BTC-USD/book?level=2").json()
@@ -56,12 +57,28 @@ def profile_orderbook_sd():
                 ob['ask'][Decimal(price)] = size
 
 
+@profile
+def profile_orderbook_python():
+    ob = PythonOrderbook()
+
+    for side, d in data.items():
+        if side == 'bids':
+            for price, size, _ in d:
+                ob['bid'][Decimal(price)] = size
+        elif side == 'asks':
+            for price, size, _ in d:
+                ob['ask'][Decimal(price)] = size
+
+    ob.to_dict()
+
+
 def random_data_test(size):
     random.seed()
     values = []
     asc = SortedDict(ordering='ASC')
     sorteddict = sd()
     raw_python = {}
+    python_sd = PythonSortedDict(ordering='ASC')
 
     while len(values) != size:
         for _ in range(size):
@@ -98,8 +115,11 @@ def random_data_test(size):
     test_ordered(asc)
     print(f"SortedDict Python lib with {size} entries")
     test_ordered(sorteddict)
+    print(f"Orderbook SortedDict Python lib with {size} entries")
+    test_ordered(python_sd)
     print(f"Python dict (non sorted) with {size} entries")
     test_unordered(raw_python)
+
 
 
 def random_data_performance():
@@ -110,8 +130,11 @@ def random_data_performance():
 if __name__ == "__main__":
     print("Sorted Dict Performance\n")
     random_data_performance()
+
     print("\n\nOrderbook Overall\n")
     print("C lib OrderBook")
     profile_orderbook()
-    print("Python lib OrderBook")
+    print("Sortedcontainers OrderBook")
     profile_orderbook_sd()
+    print("Python OrderBook")
+    profile_orderbook_python()

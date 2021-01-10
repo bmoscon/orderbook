@@ -12,7 +12,7 @@ import sys
 
 
 sources = glob.glob('orderbook/*.c')
-orderbook = Extension('order_book', sources=sources)
+orderbook = Extension('order_book', sources=sources, extra_compile_args = ["-O3"])
 
 
 def get_long_description():
