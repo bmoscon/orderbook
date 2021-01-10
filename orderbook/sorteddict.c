@@ -254,11 +254,9 @@ PyObject* SortedDict_todict(SortedDict *self, PyObject *Py_UNUSED(ignored))
         return NULL;
     }
 
-    PyObject *k = SortedDict_keys(self, NULL);
-    if (!k) {
+    if (update_keys(self)) {
         return NULL;
     }
-    Py_DECREF(k);
 
     int len = PySequence_Length(self->keys);
     for(int i = 0; i < len; ++i) {

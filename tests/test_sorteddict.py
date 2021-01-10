@@ -282,4 +282,7 @@ def test_depth_auto_truncate():
     del d[5]
     assert d.keys() == (0, 1, 2, 3, 4, 6, 7, 8, 9)
 
-
+    d[1.1] = 0
+    d[1.2] = 0
+    d[1.3] = 0
+    assert d.keys() == (0, 1, 1.1, 1.2, 1.3, 2, 3, 4, 6, 7)
