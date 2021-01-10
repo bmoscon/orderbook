@@ -39,6 +39,7 @@ static PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwd
 
         Py_INCREF(self->asks);
         self->max_depth = 0;
+        self->truncate = false;
     }
     return (PyObject *) self;
 }
@@ -46,9 +47,9 @@ static PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwd
 
 static int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
 {
-    static char *kwlist[] = {"max_depth", NULL};
+    static char *kwlist[] = {"max_depth", "max_depth_strict", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|i", kwlist, &self->max_depth)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|ip", kwlist, &self->max_depth, &self->truncate)) {
         return -1;
     }
 

@@ -39,6 +39,8 @@ PyObject *SortedDict_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         self->iterator_index = -1;
         self->keys = NULL;
         self->dirty = false;
+        self->depth = 0;
+        self->truncate = false;
     }
     return (PyObject *) self;
 }
@@ -74,34 +76,69 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
 
 
     if (kwds && PyDict_Check(kwds) && PyDict_Size(kwds) > 0) {
-        ordering = PyDict_GetItemString(kwds, "ordering");
-        if (!PyUnicode_Check(ordering)) {
-            PyErr_SetString(PyExc_ValueError, "ordering must be a string");
-            return -1;
-        }
+        if (PyDict_Contains(kwds, PyUnicode_FromString("max_depth"))) {
+            PyObject *max_depth = PyDict_GetItemString(kwds, "max_depth");
+            if (PyLong_Check(max_depth)) {
+                self->depth = PyLong_AsLong(max_depth);
+                if (self->depth == -1 && PyErr_Occurred()) {
+                    return -1;
+                }
 
-        PyObject *str = PyUnicode_AsEncodedString(ordering, "UTF-8", "strict");
-        if (!str) {
-            return -1;
-        }
+                if (self->depth < 1) {
+                    PyErr_SetString(PyExc_ValueError, "max_depth must be greater than 0");
+                    return -1;
+                }
 
-        char *value = PyBytes_AsString(str);
-
-        if (value) {
-            if (strcmp(value, "DESC") == 0) {
-                self->ordering = DESCENDING;
-            } else if (strcmp(value, "ASC") == 0) {
-                self->ordering = ASCENDING;
             } else {
-                Py_DECREF(str);
-                PyErr_SetString(PyExc_ValueError, "ordering must be one of ASC or DESC");
+                PyErr_SetString(PyExc_ValueError, "max_depth must be an integer");
+            }
+        }
+
+        if (PyDict_Contains(kwds, PyUnicode_FromString("truncate"))) {
+            PyObject *truncate = PyDict_GetItemString(kwds, "truncate");
+
+            if (PyBool_Check(truncate)) {
+                if (PyObject_IsTrue(truncate)) {
+                    self->truncate = true;
+                } else {
+                    self->truncate = false;
+                }
+            } else {
+                PyErr_SetString(PyExc_ValueError, "truncate must be a boolean");
                 return -1;
             }
         }
-        Py_DECREF(str);
-    } else {
-        // default is ascending
-        self->ordering = ASCENDING;
+
+        if (PyDict_Contains(kwds, PyUnicode_FromString("ordering"))) {
+            ordering = PyDict_GetItemString(kwds, "ordering");
+            if (!PyUnicode_Check(ordering)) {
+                PyErr_SetString(PyExc_ValueError, "ordering must be a string");
+                return -1;
+            }
+
+            PyObject *str = PyUnicode_AsEncodedString(ordering, "UTF-8", "strict");
+            if (!str) {
+                return -1;
+            }
+
+            char *value = PyBytes_AsString(str);
+
+            if (value) {
+                if (strcmp(value, "DESC") == 0) {
+                    self->ordering = DESCENDING;
+                } else if (strcmp(value, "ASC") == 0) {
+                    self->ordering = ASCENDING;
+                } else {
+                    Py_DECREF(str);
+                    PyErr_SetString(PyExc_ValueError, "ordering must be one of ASC or DESC");
+                    return -1;
+                }
+            }
+            Py_DECREF(str);
+        } else {
+            // default is ascending
+            self->ordering = ASCENDING;
+        }
     }
 
     return 0;
@@ -185,6 +222,7 @@ PyObject* SortedDict_index(SortedDict *self, PyObject *index)
 
     return ret;
 }
+
 
 PyObject* SortedDict_todict(SortedDict *self, PyObject *Py_UNUSED(ignored))
 {

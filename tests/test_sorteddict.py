@@ -124,7 +124,7 @@ def test_to_dict():
     assert list(d.keys()) == list(asc.keys())
     assert sorted(d.keys()) == list(d.keys())
     previous = None
-    for key, val in d.items():
+    for key, _ in d.items():
         assert d[key] == asc[key]
         if previous:
             d[key] > previous
@@ -226,7 +226,31 @@ def test_iteration_noop():
     d = SortedDict()
     counter = 0
 
-    for key in d:
+    for _ in d:
         counter += 1
 
     assert counter == 0
+
+
+def test_invalid_depth():
+    with pytest.raises(ValueError):
+        SortedDict(max_depth=-1)
+
+
+def test_invalid_truncate():
+    with pytest.raises(ValueError):
+        SortedDict(truncate=10)
+
+
+def test_depth_members():
+    d = SortedDict(max_depth=10, truncate=True)
+    assert d.__max_depth == 10
+    assert d.__truncate == 1
+
+    e = SortedDict(max_depth=100, truncate=False)
+    assert e.__max_depth == 100
+    assert e.__truncate == 0
+
+    f = SortedDict()
+    assert f.__max_depth == 0
+    assert f.__truncate == 0

@@ -28,6 +28,8 @@ typedef struct {
     PyObject *keys;
     enum Ordering ordering;
     int iterator_index;
+    int depth;
+    bool truncate;
     bool dirty;
 } SortedDict;
 
@@ -52,6 +54,8 @@ PyObject *SortedDict_next(SortedDict *self);
 static PyMemberDef SortedDict_members[] = {
     {"__data", T_OBJECT_EX, offsetof(SortedDict, data), READONLY, "internal data"},
     {"__ordering", T_INT, offsetof(SortedDict, ordering), 0, "ordering flag"},
+    {"__truncate", T_INT, offsetof(SortedDict, truncate), 0, "truncate flag"},
+    {"__max_depth", T_INT, offsetof(SortedDict, depth), 0, "maximum depth"},
     {NULL}
 };
 

@@ -22,6 +22,7 @@ typedef struct {
     SortedDict *bids;
     SortedDict *asks;
     uint32_t max_depth;
+    bool truncate;
 } Orderbook;
 
 
