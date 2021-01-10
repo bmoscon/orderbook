@@ -254,3 +254,32 @@ def test_depth_members():
     f = SortedDict()
     assert f.__max_depth == 0
     assert f.__truncate == 0
+
+
+def test_depth():
+    d = SortedDict({i: i for i in range(100)}, max_depth=10)
+    assert d.keys() == (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+    assert len(d) == 10
+
+
+def test_depth_nontruncated():
+    d = SortedDict({i: i for i in range(100)}, max_depth=10)
+    del d[5]
+    assert d.keys() == (0, 1, 2, 3, 4, 6, 7, 8, 9, 10)
+
+
+def test_depth_truncated():
+    d = SortedDict({i: i for i in range(100)}, max_depth=10)
+    d.truncate()
+
+    del d[5]
+    assert d.keys() == (0, 1, 2, 3, 4, 6, 7, 8, 9)
+
+
+def test_depth_auto_truncate():
+    d = SortedDict({i: i for i in range(100)}, truncate=True, max_depth=10)
+
+    del d[5]
+    assert d.keys() == (0, 1, 2, 3, 4, 6, 7, 8, 9)
+
+

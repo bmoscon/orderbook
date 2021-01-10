@@ -141,6 +141,49 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
         }
     }
 
+    if (self->truncate && self->data) {
+        if (!SortedDict_truncate(self, NULL)) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+
+static int update_keys(SortedDict *self) {
+    if (!self->dirty && self->keys) {
+       return 0;
+    }
+
+    PyObject *keys = PyDict_Keys(self->data);
+    if (!keys) {
+        return 1;
+    }
+
+    if (PyList_Sort(keys) < 0) {
+        return 1;
+    }
+
+    if (self->ordering == DESCENDING) {
+        if (PyList_Reverse(keys) < 0) {
+            return 1;
+        }
+    }
+
+     PyObject *ret = PySequence_Tuple(keys);
+     Py_DECREF(keys);
+     if (!ret) {
+         return 1;
+     }
+
+    if (self->keys) {
+        Py_DECREF(self->keys);
+    }
+
+    self->keys = ret;
+    self->dirty = false;
+
     return 0;
 }
 
@@ -177,9 +220,15 @@ PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored))
         Py_DECREF(self->keys);
     }
 
-    Py_INCREF(ret);
     self->keys = ret;
     self->dirty = false;
+
+    if (self->depth) {
+        ret = PySequence_GetSlice(ret, 0, self->depth);
+    } else {
+        Py_INCREF(ret);
+    }
+
     return ret;
 }
 
@@ -191,11 +240,9 @@ PyObject* SortedDict_index(SortedDict *self, PyObject *index)
         return NULL;
     }
 
-    PyObject *k = SortedDict_keys(self, NULL);
-    if (!k) {
+    if (update_keys(self)) {
         return NULL;
     }
-    Py_DECREF(k);
 
     // new reference
     PyObject *key = PySequence_GetItem(self->keys, i);
@@ -248,10 +295,54 @@ PyObject* SortedDict_todict(SortedDict *self, PyObject *Py_UNUSED(ignored))
 }
 
 
+PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored))
+{
+    if (self->depth) {
+        if (update_keys(self)) {
+            return NULL;
+        }
+ 
+        PyObject *delete = PySequence_GetSlice(self->keys, self->depth, PyDict_Size(self->data));
+        if (!delete) {
+            return NULL;
+        }
+        
+        int len = PySequence_Length(delete);
+        if (len == -1) {
+            Py_DECREF(delete);
+            return NULL;
+        }
+
+        for (int i = 0; i < len; ++i) {
+            if (PyDict_DelItem(self->data, PySequence_Fast_GET_ITEM(delete, i)) == -1) {
+                Py_DECREF(delete);
+                return NULL;
+            }
+        }
+        Py_DECREF(delete);
+
+        if (len > 0) {
+            self->dirty = true;
+        }
+
+        if (update_keys(self)) {
+            return NULL;
+        }
+    }
+
+    return Py_BuildValue("");
+}
+
+
 /* Sorted Dictionary Mapping Functions */
 Py_ssize_t SortedDict_len(SortedDict *self)
 {
-	return PyDict_Size(self->data);
+	int len = PyDict_Size(self->data);
+    if (self->depth && self->depth < len) {
+        return self->depth;
+    }
+
+    return len;
 }
 
 PyObject *SortedDict_getitem(SortedDict *self, PyObject *key)
@@ -274,7 +365,15 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
     self->dirty = true;
 
     if (value) {
-        return PyDict_SetItem(self->data, key, value);
+        int ret = PyDict_SetItem(self->data, key, value);
+        
+        if (ret) {
+            return ret;
+        } else if (self->truncate && !SortedDict_truncate(self, NULL)) {
+            return -1;
+        }
+        
+        return ret;
     } else {
         // setitem also called to for del (value will be null for deletes)
         return PyDict_DelItem(self->data, key);
@@ -287,11 +386,9 @@ PyObject *SortedDict_next(SortedDict *self)
     if (self->iterator_index == -1) {
         self->iterator_index = 0;
 
-        PyObject *k = SortedDict_keys(self, NULL);
-        if (!k) {
+        if (update_keys(self)) {
             return NULL;
         }
-        Py_DECREF(k);
 
         Py_ssize_t size = PySequence_Fast_GET_SIZE(self->keys);
         if (size == 0){
