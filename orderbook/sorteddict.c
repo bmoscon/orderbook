@@ -301,12 +301,12 @@ PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored))
         if (update_keys(self)) {
             return NULL;
         }
- 
+
         PyObject *delete = PySequence_GetSlice(self->keys, self->depth, PyDict_Size(self->data));
         if (!delete) {
             return NULL;
         }
-        
+
         int len = PySequence_Length(delete);
         if (len == -1) {
             Py_DECREF(delete);
@@ -366,13 +366,13 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
 
     if (value) {
         int ret = PyDict_SetItem(self->data, key, value);
-        
+
         if (ret) {
             return ret;
         } else if (self->truncate && !SortedDict_truncate(self, NULL)) {
             return -1;
         }
-        
+
         return ret;
     } else {
         // setitem also called to for del (value will be null for deletes)
