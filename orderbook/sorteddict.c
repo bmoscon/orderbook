@@ -306,7 +306,7 @@ PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored))
         }
     }
 
-    return Py_BuildValue("");
+    Py_RETURN_NONE;
 }
 
 
