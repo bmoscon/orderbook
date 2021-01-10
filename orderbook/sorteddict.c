@@ -151,7 +151,8 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
 }
 
 
-static int update_keys(SortedDict *self) {
+/* internal helper function to update keys */
+static inline int update_keys(SortedDict *self) {
     if (!self->dirty && self->keys) {
        return 0;
     }
@@ -162,11 +163,13 @@ static int update_keys(SortedDict *self) {
     }
 
     if (PyList_Sort(keys) < 0) {
+        Py_DECREF(keys);
         return 1;
     }
 
     if (self->ordering == DESCENDING) {
         if (PyList_Reverse(keys) < 0) {
+            Py_DECREF(keys);
             return 1;
         }
     }
@@ -190,38 +193,11 @@ static int update_keys(SortedDict *self) {
 
 PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored))
 {
-    if (!self->dirty && self->keys) {
-        Py_INCREF(self->keys);
-        return self->keys;
-    }
-
-    PyObject *keys = PyDict_Keys(self->data);
-    if (!keys) {
+    if (update_keys(self)) {
         return NULL;
     }
 
-    if (PyList_Sort(keys) < 0) {
-        return NULL;
-    }
-
-    if (self->ordering == DESCENDING) {
-        if (PyList_Reverse(keys) < 0) {
-            return NULL;
-        }
-    }
-
-     PyObject *ret = PySequence_Tuple(keys);
-     Py_DECREF(keys);
-     if (!ret) {
-         return NULL;
-     }
-
-    if (self->keys) {
-        Py_DECREF(self->keys);
-    }
-
-    self->keys = ret;
-    self->dirty = false;
+    PyObject *ret = self->keys;
 
     if (self->depth) {
         ret = PySequence_GetSlice(ret, 0, self->depth);
