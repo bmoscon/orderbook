@@ -236,6 +236,9 @@ def test_invalid_depth():
     with pytest.raises(ValueError):
         SortedDict(max_depth=-1)
 
+    with pytest.raises(ValueError):
+        SortedDict(max_depth='A')
+
 
 def test_invalid_truncate():
     with pytest.raises(ValueError):

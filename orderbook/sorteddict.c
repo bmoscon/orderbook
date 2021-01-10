@@ -91,6 +91,7 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
 
             } else {
                 PyErr_SetString(PyExc_ValueError, "max_depth must be an integer");
+                return -1;
             }
         }
 
@@ -341,7 +342,7 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
     if (value) {
         int ret = PyDict_SetItem(self->data, key, value);
 
-        if (ret) {
+        if (ret == -1) {
             return ret;
         } else if (self->truncate && !SortedDict_truncate(self, NULL)) {
             return -1;
