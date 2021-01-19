@@ -1,8 +1,9 @@
 ## Changelog
 
-### 0.1.0
+### 0.1.0 (2021-01-18)
   * Use enums to make code more readable
   * Add manifest file to ensure headers and changes file are included in sdist builds
+  * Add support for max depth and depth truncation
 
 ### 0.0.2 (2020-12-27)
   * Bugfix: Fix sorted dictionary arg parsing
