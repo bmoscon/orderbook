@@ -185,7 +185,7 @@ def test_checksum():
 
     for a in asks:
         ob.asks[Decimal(a[0])] = Decimal(a[1])
-    
+
     for b in bids:
         ob.bids[Decimal(b[0])] = Decimal(b[1])
 
