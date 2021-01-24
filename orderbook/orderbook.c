@@ -132,7 +132,7 @@ static PyObject* Orderbook_checksum(Orderbook *self, PyObject *depth)
         return PyErr_NoMemory();
     }
 
-    /* bids */
+    /* asks */
     for(int i = 0; i < len; ++i) {
         PyObject *price = PyTuple_GET_ITEM(self->asks->keys, i);
         PyObject *size = PyDict_GetItem(self->asks->data, price);
@@ -146,9 +146,12 @@ static PyObject* Orderbook_checksum(Orderbook *self, PyObject *depth)
             free(data);
             return NULL;
         }
+    }
 
-        price = PyTuple_GET_ITEM(self->bids->keys, i);
-        size = PyDict_GetItem(self->bids->data, price);
+    /* bids */
+    for(int i = 0; i < len; ++i) {
+        PyObject *price = PyTuple_GET_ITEM(self->bids->keys, i);
+        PyObject *size = PyDict_GetItem(self->bids->data, price);
 
         if (populate(price, data, &pos) == -1) {
             free(data);
@@ -159,7 +162,6 @@ static PyObject* Orderbook_checksum(Orderbook *self, PyObject *depth)
             free(data);
             return NULL;
         }
-
     }
 
     unsigned long ret = crc32(data, pos);
@@ -171,7 +173,7 @@ static PyObject* Orderbook_checksum(Orderbook *self, PyObject *depth)
 
 static int populate(PyObject *pydata, uint8_t *data, int *pos)
 {
-    PyObject *repr = PyObject_Repr(pydata);
+    PyObject *repr = PyObject_Str(pydata);
     if (!repr) {
         return -1;
     }
