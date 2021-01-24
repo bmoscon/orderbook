@@ -31,6 +31,8 @@ static PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwd
 static int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds);
 
 static PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored));
+static PyObject* Orderbook_checksum(Orderbook *self, PyObject *depth);
+
 
 Py_ssize_t Orderbook_len(Orderbook *self);
 PyObject *Orderbook_getitem(Orderbook *self, PyObject *key);
@@ -53,6 +55,7 @@ static PyMemberDef Orderbook_members[] = {
 // Orderbook class methods
 static PyMethodDef Orderbook_methods[] = {
     {"to_dict", (PyCFunction) Orderbook_todict, METH_NOARGS, "Return a python dictionary with bids and asks"},
+    {"checksum", (PyCFunction) Orderbook_checksum, METH_O, "Calculate checksum using top N levels"},
     {NULL}
 };
 
@@ -91,6 +94,10 @@ static PyModuleDef orderbookmodule = {
     .m_doc = "Orderbook data structure",
     .m_size = -1,
 };
+
+
+/* helper functions - internal only */
+static int populate(PyObject *pydata, uint8_t *data, int *pos);
 
 
 #endif

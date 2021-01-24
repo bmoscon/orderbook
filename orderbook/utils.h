@@ -12,3 +12,4 @@ enum side_e {
 };
 
 enum side_e check_key(const char *key);
+uint32_t crc32(const unsigned char *data, size_t len);

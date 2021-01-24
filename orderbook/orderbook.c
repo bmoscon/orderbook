@@ -98,6 +98,117 @@ static PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored))
 }
 
 
+static PyObject* Orderbook_checksum(Orderbook *self, PyObject *depth)
+{
+    if (!PyLong_CheckExact(depth)) {
+        PyErr_SetString(PyExc_ValueError, "argument must be an integer");
+        return NULL;
+    }
+
+    long len = PyLong_AsLong(depth);
+    if (len == -1) {
+        if (PyErr_Occurred()) {
+            return NULL;
+        }
+    }
+
+    if (len < SortedDict_len(self->asks) || len < SortedDict_len(self->bids)) {
+        PyErr_SetString(PyExc_ValueError, "depth larger than book depth");
+        return NULL;
+    }
+
+    if (update_keys(self->bids)) {
+        return NULL;
+    }
+
+    if (update_keys(self->asks)) {
+        return NULL;
+    }
+
+    uint8_t *data = calloc(1024, sizeof(uint8_t));
+    int pos = 0;
+
+    if (!data) {
+        return PyErr_NoMemory();
+    }
+
+    /* bids */
+    for(int i = 0; i < len; ++i) {
+        PyObject *price = PyTuple_GET_ITEM(self->asks->keys, i);
+        PyObject *size = PyDict_GetItem(self->asks->data, price);
+
+        if (populate(price, data, &pos) == -1) {
+            free(data);
+            return NULL;
+        }
+
+        if (populate(size, data, &pos) == -1) {
+            free(data);
+            return NULL;
+        }
+
+        price = PyTuple_GET_ITEM(self->bids->keys, i);
+        size = PyDict_GetItem(self->bids->data, price);
+
+        if (populate(price, data, &pos) == -1) {
+            free(data);
+            return NULL;
+        }
+
+        if (populate(size, data, &pos) == -1) {
+            free(data);
+            return NULL;
+        }
+
+    }
+
+    unsigned long ret = crc32(data, pos);
+    free(data);
+
+    return PyLong_FromUnsignedLong(ret);
+}
+
+
+static int populate(PyObject *pydata, uint8_t *data, int *pos)
+{
+    PyObject *repr = PyObject_Repr(pydata);
+    if (!repr) {
+        return -1;
+    }
+
+    PyObject* str = PyUnicode_AsEncodedString(repr, "UTF-8", "strict");
+    if (!str) {
+        Py_DECREF(repr);
+        return -1;
+    }
+
+    const char *string = PyBytes_AS_STRING(str);
+    if (!string) {
+        Py_DECREF(str);
+        Py_DECREF(repr);
+        return -1;
+    }
+
+    const char *ptr = string;
+    bool leading_zero = true;
+    while (*ptr) {
+        if (*ptr != '.') {
+            if (*ptr != '0' && leading_zero) {
+                leading_zero = false;
+            }
+            if (*ptr == '0' && leading_zero) {
+                ptr++;
+                continue;
+            }
+            data[(*pos)++] = *ptr;
+        }
+        ptr++;
+    }
+
+    return 0;
+}
+
+
 /* Orderbook Mapping Functions */
 Py_ssize_t Orderbook_len(Orderbook *self)
 {
