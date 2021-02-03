@@ -8,7 +8,7 @@ associated with this software.
 #include "utils.h"
 
 
-static void Orderbook_dealloc(Orderbook *self)
+void Orderbook_dealloc(Orderbook *self)
 {
     Py_XDECREF(self->bids);
     Py_XDECREF(self->asks);
@@ -16,7 +16,7 @@ static void Orderbook_dealloc(Orderbook *self)
 }
 
 
-static PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
     Orderbook *self;
     self = (Orderbook *) type->tp_alloc(type, 0);
@@ -40,25 +40,40 @@ static PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwd
         Py_INCREF(self->asks);
         self->max_depth = 0;
         self->truncate = false;
+        self->checksum = INVALID_CHECKSUM_FORMAT;
     }
     return (PyObject *) self;
 }
 
 
-static int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
+int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
 {
-    static char *kwlist[] = {"max_depth", "max_depth_strict", NULL};
+    static char *kwlist[] = {"max_depth", "max_depth_strict", "checksum_format", NULL};
+    Py_buffer checksum_str;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|ip", kwlist, &self->max_depth, &self->truncate)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|ips*", kwlist, &self->max_depth, &self->truncate, &checksum_str)) {
         return -1;
     }
 
+    if (checksum_str.len) {
+        if (strncmp(checksum_str.buf, "KRAKEN", checksum_str.len) == 0) {
+            self->checksum = KRAKEN;
+        } else {
+            PyBuffer_Release(&checksum_str);
+            PyErr_SetString(PyExc_TypeError, "invalid checksum format specified");
+            return -1;
+        }
+    } else {
+        self->checksum = INVALID_CHECKSUM_FORMAT;
+    }
+
+    PyBuffer_Release(&checksum_str);
     return 0;
 }
 
 
 /* Orderbook methods */
-static PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored))
+PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored))
 {
     PyObject *ret = PyDict_New();
     if (!ret) {
@@ -98,22 +113,10 @@ static PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored))
 }
 
 
-static PyObject* Orderbook_checksum(Orderbook *self, PyObject *depth)
+PyObject* Orderbook_checksum(Orderbook *self, PyObject *Py_UNUSED(ignored))
 {
-    if (!PyLong_CheckExact(depth)) {
-        PyErr_SetString(PyExc_ValueError, "argument must be an integer");
-        return NULL;
-    }
-
-    long len = PyLong_AsLong(depth);
-    if (len == -1) {
-        if (PyErr_Occurred()) {
-            return NULL;
-        }
-    }
-
-    if (len < SortedDict_len(self->asks) || len < SortedDict_len(self->bids)) {
-        PyErr_SetString(PyExc_ValueError, "depth larger than book depth");
+    if (self->checksum == INVALID_CHECKSUM_FORMAT) {
+        PyErr_SetString(PyExc_ValueError, "no checksum format specified");
         return NULL;
     }
 
@@ -125,89 +128,7 @@ static PyObject* Orderbook_checksum(Orderbook *self, PyObject *depth)
         return NULL;
     }
 
-    uint8_t *data = calloc(1024, sizeof(uint8_t));
-    int pos = 0;
-
-    if (!data) {
-        return PyErr_NoMemory();
-    }
-
-    /* asks */
-    for(int i = 0; i < len; ++i) {
-        PyObject *price = PyTuple_GET_ITEM(self->asks->keys, i);
-        PyObject *size = PyDict_GetItem(self->asks->data, price);
-
-        if (populate(price, data, &pos) == -1) {
-            free(data);
-            return NULL;
-        }
-
-        if (populate(size, data, &pos) == -1) {
-            free(data);
-            return NULL;
-        }
-    }
-
-    /* bids */
-    for(int i = 0; i < len; ++i) {
-        PyObject *price = PyTuple_GET_ITEM(self->bids->keys, i);
-        PyObject *size = PyDict_GetItem(self->bids->data, price);
-
-        if (populate(price, data, &pos) == -1) {
-            free(data);
-            return NULL;
-        }
-
-        if (populate(size, data, &pos) == -1) {
-            free(data);
-            return NULL;
-        }
-    }
-
-    unsigned long ret = crc32(data, pos);
-    free(data);
-
-    return PyLong_FromUnsignedLong(ret);
-}
-
-
-static int populate(PyObject *pydata, uint8_t *data, int *pos)
-{
-    PyObject *repr = PyObject_Str(pydata);
-    if (!repr) {
-        return -1;
-    }
-
-    PyObject* str = PyUnicode_AsEncodedString(repr, "UTF-8", "strict");
-    if (!str) {
-        Py_DECREF(repr);
-        return -1;
-    }
-
-    const char *string = PyBytes_AS_STRING(str);
-    if (!string) {
-        Py_DECREF(str);
-        Py_DECREF(repr);
-        return -1;
-    }
-
-    const char *ptr = string;
-    bool leading_zero = true;
-    while (*ptr) {
-        if (*ptr != '.') {
-            if (*ptr != '0' && leading_zero) {
-                leading_zero = false;
-            }
-            if (*ptr == '0' && leading_zero) {
-                ptr++;
-                continue;
-            }
-            data[(*pos)++] = *ptr;
-        }
-        ptr++;
-    }
-
-    return 0;
+    return calculate_checksum(self);
 }
 
 

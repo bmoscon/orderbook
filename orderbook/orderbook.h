@@ -22,16 +22,17 @@ typedef struct {
     SortedDict *bids;
     SortedDict *asks;
     uint32_t max_depth;
+    uint32_t checksum;
     bool truncate;
 } Orderbook;
 
 
-static void Orderbook_dealloc(Orderbook *self);
-static PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds);
-static int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds);
+void Orderbook_dealloc(Orderbook *self);
+PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds);
+int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds);
 
-static PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored));
-static PyObject* Orderbook_checksum(Orderbook *self, PyObject *depth);
+PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored));
+PyObject* Orderbook_checksum(Orderbook *self, PyObject *Py_UNUSED(ignored));
 
 
 Py_ssize_t Orderbook_len(Orderbook *self);
@@ -55,7 +56,7 @@ static PyMemberDef Orderbook_members[] = {
 // Orderbook class methods
 static PyMethodDef Orderbook_methods[] = {
     {"to_dict", (PyCFunction) Orderbook_todict, METH_NOARGS, "Return a python dictionary with bids and asks"},
-    {"checksum", (PyCFunction) Orderbook_checksum, METH_O, "Calculate checksum using top N levels"},
+    {"checksum", (PyCFunction) Orderbook_checksum, METH_NOARGS, "Calculate checksum using top N levels"},
     {NULL}
 };
 
@@ -96,8 +97,6 @@ static PyModuleDef orderbookmodule = {
 };
 
 
-/* helper functions - internal only */
-static int populate(PyObject *pydata, uint8_t *data, int *pos);
-
+#include "checksums.h"
 
 #endif

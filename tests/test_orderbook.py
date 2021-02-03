@@ -158,8 +158,14 @@ def test_orderbook_setitem_invalid():
         ob['bids'] = 'a'
 
 
+def test_checksum_raises():
+    with pytest.raises(ValueError):
+        ob = OrderBook()
+        ob.checksum()
+
+
 def test_checksum():
-    ob = OrderBook()
+    ob = OrderBook(checksum_format='KRAKEN')
     asks = [
     [ "0.05005", "0.00000500", "1582905487.684110" ],
     [ "0.05010", "0.00000500", "1582905486.187983" ],
@@ -189,4 +195,4 @@ def test_checksum():
     for b in bids:
         ob.bids[Decimal(b[0])] = Decimal(b[1])
 
-    assert ob.checksum(10) == 974947235
+    assert ob.checksum() == 974947235
