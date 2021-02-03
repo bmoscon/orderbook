@@ -96,4 +96,8 @@ static PyTypeObject SortedDictType = {
     .tp_dictoffset = 0,
 };
 
+/* helpers */
+int update_keys(SortedDict *self);
+
+
 #endif

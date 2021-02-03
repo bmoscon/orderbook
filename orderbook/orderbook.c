@@ -8,7 +8,7 @@ associated with this software.
 #include "utils.h"
 
 
-static void Orderbook_dealloc(Orderbook *self)
+void Orderbook_dealloc(Orderbook *self)
 {
     Py_XDECREF(self->bids);
     Py_XDECREF(self->asks);
@@ -16,7 +16,7 @@ static void Orderbook_dealloc(Orderbook *self)
 }
 
 
-static PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
     Orderbook *self;
     self = (Orderbook *) type->tp_alloc(type, 0);
@@ -40,25 +40,40 @@ static PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwd
         Py_INCREF(self->asks);
         self->max_depth = 0;
         self->truncate = false;
+        self->checksum = INVALID_CHECKSUM_FORMAT;
     }
     return (PyObject *) self;
 }
 
 
-static int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
+int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
 {
-    static char *kwlist[] = {"max_depth", "max_depth_strict", NULL};
+    static char *kwlist[] = {"max_depth", "max_depth_strict", "checksum_format", NULL};
+    Py_buffer checksum_str;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|ip", kwlist, &self->max_depth, &self->truncate)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|ips*", kwlist, &self->max_depth, &self->truncate, &checksum_str)) {
         return -1;
     }
 
+    if (checksum_str.len) {
+        if (strncmp(checksum_str.buf, "KRAKEN", checksum_str.len) == 0) {
+            self->checksum = KRAKEN;
+        } else {
+            PyBuffer_Release(&checksum_str);
+            PyErr_SetString(PyExc_TypeError, "invalid checksum format specified");
+            return -1;
+        }
+    } else {
+        self->checksum = INVALID_CHECKSUM_FORMAT;
+    }
+
+    PyBuffer_Release(&checksum_str);
     return 0;
 }
 
 
 /* Orderbook methods */
-static PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored))
+PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored))
 {
     PyObject *ret = PyDict_New();
     if (!ret) {
@@ -95,6 +110,25 @@ static PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored))
     Py_DECREF(asks);
     Py_DECREF(bids);
     return ret;
+}
+
+
+PyObject* Orderbook_checksum(Orderbook *self, PyObject *Py_UNUSED(ignored))
+{
+    if (self->checksum == INVALID_CHECKSUM_FORMAT) {
+        PyErr_SetString(PyExc_ValueError, "no checksum format specified");
+        return NULL;
+    }
+
+    if (update_keys(self->bids)) {
+        return NULL;
+    }
+
+    if (update_keys(self->asks)) {
+        return NULL;
+    }
+
+    return calculate_checksum(self);
 }
 
 

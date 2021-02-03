@@ -122,7 +122,7 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
                 return -1;
             }
 
-            char *value = PyBytes_AsString(str);
+            const char *value = PyBytes_AsString(str);
 
             if (value) {
                 if (strcmp(value, "DESC") == 0) {
@@ -153,7 +153,7 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
 
 
 /* internal helper function to update keys */
-static inline int update_keys(SortedDict *self) {
+inline int update_keys(SortedDict *self) {
     if (!self->dirty && self->keys) {
        return 0;
     }
