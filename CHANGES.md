@@ -1,5 +1,8 @@
 ## Changelog
 
+### 0.1.1
+  * Checksum support for orderbooks
+
 ### 0.1.0 (2021-01-18)
   * Use enums to make code more readable
   * Add manifest file to ensure headers and changes file are included in sdist builds
