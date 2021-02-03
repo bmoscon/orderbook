@@ -4,6 +4,8 @@ Copyright (C) 2020-2021  Bryant Moscon - bmoscon@gmail.com
 Please see the LICENSE file for the terms and conditions
 associated with this software.
 '''
+
+
 class OrderBook:
     def __init__(self, max_depth=None, truncate=None):
         self.__bids = SortedDict(ordering='DESC')

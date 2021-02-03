@@ -121,7 +121,6 @@ def random_data_test(size):
     test_unordered(raw_python)
 
 
-
 def random_data_performance():
     for size in (10, 100, 200, 400, 500, 1000, 2000, 10000, 100000, 200000, 500000):
         random_data_test(size)

@@ -29,7 +29,6 @@ def calc_checksum(book):
     return str(zlib.crc32(combined.encode()))
 
 
-
 def main():
     ob = OrderBook(checksum_format='KRAKEN')
 
@@ -63,7 +62,6 @@ def main():
     ob.bids = bids
     book = {BID: sd(bids), ASK: sd(asks)}
 
-
     start = time.time()
     checksum = calc_checksum(book)
     end = time.time()
@@ -84,11 +82,10 @@ def main():
 
     book = {BID: sd({Decimal(update[0]): Decimal(update[1]) for update in data['result']['XETHZUSD']['bids']}),
             ASK: sd({Decimal(update[0]): Decimal(update[1]) for update in data['result']['XETHZUSD']['asks']})
-        }
-    
+            }
+
     ob.bids = {Decimal(update[0]): Decimal(update[1]) for update in data['result']['XETHZUSD']['bids']}
     ob.asks = {Decimal(update[0]): Decimal(update[1]) for update in data['result']['XETHZUSD']['asks']}
-
 
     start = time.time()
     checksum1 = calc_checksum(book)
