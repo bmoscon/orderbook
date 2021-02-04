@@ -49,7 +49,7 @@ PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
 {
     static char *kwlist[] = {"max_depth", "max_depth_strict", "checksum_format", NULL};
-    Py_buffer checksum_str;
+    Py_buffer checksum_str = {0};
 
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|ips*", kwlist, &self->max_depth, &self->truncate, &checksum_str)) {
         return -1;
@@ -58,6 +58,8 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
     if (checksum_str.len) {
         if (strncmp(checksum_str.buf, "KRAKEN", checksum_str.len) == 0) {
             self->checksum = KRAKEN;
+        } else if ((checksum_str.len > 2) && (strncmp(checksum_str.buf, "FTX", 3) == 0)) {
+            self->checksum = FTX;
         } else {
             PyBuffer_Release(&checksum_str);
             PyErr_SetString(PyExc_TypeError, "invalid checksum format specified");
