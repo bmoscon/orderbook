@@ -17,12 +17,19 @@ associated with this software.
 #include "sorteddict.h"
 
 
+enum Checksums {
+    CHECKSUM_PROCESSING_ERROR = -1,
+    KRAKEN,
+    FTX,
+    INVALID_CHECKSUM_FORMAT
+};
+
 typedef struct {
     PyObject_HEAD
     SortedDict *bids;
     SortedDict *asks;
     uint32_t max_depth;
-    uint32_t checksum;
+    enum Checksums checksum;
     bool truncate;
 } Orderbook;
 
@@ -31,15 +38,15 @@ void Orderbook_dealloc(Orderbook *self);
 PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds);
 int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds);
 
-PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored));
-PyObject* Orderbook_checksum(Orderbook *self, PyObject *Py_UNUSED(ignored));
+PyObject* Orderbook_todict(const Orderbook *self, PyObject *Py_UNUSED(ignored));
+PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored));
 
 
-Py_ssize_t Orderbook_len(Orderbook *self);
-PyObject *Orderbook_getitem(Orderbook *self, PyObject *key);
-int Orderbook_setitem(Orderbook *self, PyObject *key, PyObject *value);
+Py_ssize_t Orderbook_len(const Orderbook *self);
+PyObject *Orderbook_getitem(const Orderbook *self, PyObject *key);
+int Orderbook_setitem(const Orderbook *self, PyObject *key, PyObject *value);
 
-int Orderbook_setattr(PyObject *self, PyObject *attr, PyObject *value);
+int Orderbook_setattr(const PyObject *self, PyObject *attr, PyObject *value);
 
 
 // Orderbook class members
@@ -97,6 +104,8 @@ static PyModuleDef orderbookmodule = {
 };
 
 
-#include "checksums.h"
+// Checksum Definitions
+static PyObject* calculate_checksum(const Orderbook *ob);
+
 
 #endif

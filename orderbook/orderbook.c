@@ -68,12 +68,13 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
     }
 
     PyBuffer_Release(&checksum_str);
+
     return 0;
 }
 
 
 /* Orderbook methods */
-PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored))
+PyObject* Orderbook_todict(const Orderbook *self, PyObject *Py_UNUSED(ignored))
 {
     PyObject *ret = PyDict_New();
     if (!ret) {
@@ -113,7 +114,7 @@ PyObject* Orderbook_todict(Orderbook *self, PyObject *Py_UNUSED(ignored))
 }
 
 
-PyObject* Orderbook_checksum(Orderbook *self, PyObject *Py_UNUSED(ignored))
+PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored))
 {
     if (self->checksum == INVALID_CHECKSUM_FORMAT) {
         PyErr_SetString(PyExc_ValueError, "no checksum format specified");
@@ -133,13 +134,13 @@ PyObject* Orderbook_checksum(Orderbook *self, PyObject *Py_UNUSED(ignored))
 
 
 /* Orderbook Mapping Functions */
-Py_ssize_t Orderbook_len(Orderbook *self)
+Py_ssize_t Orderbook_len(const Orderbook *self)
 {
 	return SortedDict_len(self->bids) + SortedDict_len(self->asks);
 }
 
 
-PyObject *Orderbook_getitem(Orderbook *self, PyObject *key)
+PyObject *Orderbook_getitem(const Orderbook *self, PyObject *key)
 {
     if (!PyUnicode_Check(key)) {
         PyErr_SetString(PyExc_ValueError, "key must one of bid/ask");
@@ -168,7 +169,7 @@ PyObject *Orderbook_getitem(Orderbook *self, PyObject *key)
 }
 
 
-int Orderbook_setitem(Orderbook *self, PyObject *key, PyObject *value)
+int Orderbook_setitem(const Orderbook *self, PyObject *key, PyObject *value)
 {
     if (!PyUnicode_Check(key)) {
         PyErr_SetString(PyExc_ValueError, "key must one of bid/ask");
@@ -218,7 +219,7 @@ int Orderbook_setitem(Orderbook *self, PyObject *key, PyObject *value)
 }
 
 
-int Orderbook_setattr(PyObject *self, PyObject *attr, PyObject *value)
+int Orderbook_setattr(const PyObject *self, PyObject *attr, PyObject *value)
 {
     return Orderbook_setitem((Orderbook *)self, attr, value);
 }
@@ -249,4 +250,110 @@ PyMODINIT_FUNC PyInit_order_book(void)
     }
 
     return m;
+}
+
+
+// Checksums Code
+static int kraken_populate(PyObject *pydata, uint8_t *data, int *pos)
+{
+    PyObject *repr = PyObject_Str(pydata);
+    if (!repr) {
+        return -1;
+    }
+
+    PyObject* str = PyUnicode_AsEncodedString(repr, "UTF-8", "strict");
+    if (!str) {
+        Py_DECREF(repr);
+        return -1;
+    }
+
+    const char *string = PyBytes_AS_STRING(str);
+    if (!string) {
+        Py_DECREF(str);
+        Py_DECREF(repr);
+        return -1;
+    }
+
+    const char *ptr = string;
+    bool leading_zero = true;
+    while (*ptr) {
+        if (*ptr != '.') {
+            if (*ptr != '0' && leading_zero) {
+                leading_zero = false;
+            }
+            if (*ptr == '0' && leading_zero) {
+                ptr++;
+                continue;
+            }
+            data[(*pos)++] = *ptr;
+        }
+        ptr++;
+    }
+
+    return 0;
+}
+
+
+static PyObject* kraken_checksum(const Orderbook *ob)
+{
+    if (ob->max_depth && ob->max_depth < 10) {
+        PyErr_SetString(PyExc_ValueError, "Max depth is less than minimum number of levels for Kraken checksum");
+        return NULL;
+    }
+
+    uint8_t *data = calloc(1024, sizeof(uint8_t));
+    int pos = 0;
+
+    if (!data) {
+        return PyErr_NoMemory();
+    }
+
+    /* asks */
+    for(int i = 0; i < 10; ++i) { // 10 is the kraken defined number of price/size pairs to use from each side
+        PyObject *price = PyTuple_GET_ITEM(ob->asks->keys, i);
+        PyObject *size = PyDict_GetItem(ob->asks->data, price);
+
+        if (kraken_populate(price, data, &pos) == -1) {
+            free(data);
+            return NULL;
+        }
+
+        if (kraken_populate(size, data, &pos) == -1) {
+            free(data);
+            return NULL;
+        }
+    }
+
+    /* bids */
+    for(int i = 0; i < 10; ++i) { // 10 is the kraken defined number of price/size pairs to use from each side
+        PyObject *price = PyTuple_GET_ITEM(ob->bids->keys, i);
+        PyObject *size = PyDict_GetItem(ob->bids->data, price);
+
+        if (kraken_populate(price, data, &pos) == -1) {
+            free(data);
+            return NULL;
+        }
+
+        if (kraken_populate(size, data, &pos) == -1) {
+            free(data);
+            return NULL;
+        }
+    }
+
+    unsigned long ret = crc32(data, pos);
+    free(data);
+
+    return PyLong_FromUnsignedLong(ret);
+}
+
+
+static PyObject* calculate_checksum(const Orderbook *ob)
+{
+    switch (ob->checksum) {
+        case KRAKEN:
+            return kraken_checksum(ob);
+            break;
+        default:
+            return NULL;
+    }
 }
