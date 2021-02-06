@@ -3,6 +3,9 @@ Copyright (C) 2020-2021  Bryant Moscon - bmoscon@gmail.com
 
 Please see the LICENSE file for the terms and conditions
 associated with this software.
+
+
+This class is functionally equivalent to the C class (for the basic use cases). It is used for performance comparisons only
 '''
 
 

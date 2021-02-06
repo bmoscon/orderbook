@@ -1,12 +1,15 @@
 ## Changelog
 
 ### 0.1.1
-  * Checksum support for orderbooks
+  * Feature: Checksum support for orderbooks
+  * Feature: FTX checksum support
+  * Feature: Kraken checksum support
+  * Perf: Use CRC32 table to improve performance of checksum code
 
 ### 0.1.0 (2021-01-18)
-  * Use enums to make code more readable
-  * Add manifest file to ensure headers and changes file are included in sdist builds
-  * Add support for max depth and depth truncation
+  * Minor: Use enums to make code more readable
+  * Bugfix: Add manifest file to ensure headers and changes file are included in sdist builds
+  * Feature: Add support for max depth and depth truncation
 
 ### 0.0.2 (2020-12-27)
   * Bugfix: Fix sorted dictionary arg parsing
