@@ -105,4 +105,4 @@ The performance of constructing sorted dictionaries using the same libraries, as
 This represents a roughly 2x speedup compared to a pure python implementation, and in many cases is close to the performance of an unsorted python dictionary.
 
 
-For other performance metrics, run `performance_test.py` as well as the other performance tests in [`perf/`](perf/)
+For other performance metrics, run `performance_test.py` as well as the other performance tests in [perf/](perf/)
