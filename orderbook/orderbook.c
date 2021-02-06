@@ -351,7 +351,7 @@ static PyObject* kraken_checksum(const Orderbook *ob)
         return NULL;
     }
 
-    unsigned long ret = crc32(ob->checksum_buffer, pos);
+    unsigned long ret = crc32_table(ob->checksum_buffer, pos);
     return PyLong_FromUnsignedLong(ret);
 }
 
@@ -418,7 +418,7 @@ static PyObject* ftx_checksum(const Orderbook *ob)
         }
     }
 
-    unsigned long ret = crc32(ob->checksum_buffer, pos-1);
+    unsigned long ret = crc32_table(ob->checksum_buffer, pos-1);
 
     return PyLong_FromUnsignedLong(ret);
 }

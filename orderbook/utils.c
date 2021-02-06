@@ -24,21 +24,20 @@ enum side_e check_key(const char *key)
 
 
 /*
- * CRC32 implementation based on https://stackoverflow.com/questions/27939882/fast-crc-algorithm
- *
- *  This function's code is not subject to the license of this software
- */
-uint32_t crc32(const uint8_t *data, size_t len)
+CRC source code based on:
+https://stackoverflow.com/questions/302914/crc32-c-or-c-implementation
+
+This code is not subject to the license of this software.
+
+Author states license is free to use for all purposes, including commercial.
+*/
+uint32_t crc32_table(const uint8_t *data, size_t len)
 {
-    int k;
-    uint32_t checksum = ~0;
+      uint32_t crc = 0xFFFFFFFF;
 
-    while (len--) {
-        checksum ^= *data++;
-        for (k = 0; k < 8; k++) {
-            checksum = checksum & 1 ? (checksum >> 1) ^ 0xEDB88320 : checksum >> 1;
-        }
-    }
+      while (len--) {
+          crc = crc_32_table[((crc) ^ (*data++)) & 0xFF] ^ ((crc) >> 8);
+      }
 
-    return ~checksum;
+      return ~crc;
 }
