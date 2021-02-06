@@ -2,6 +2,8 @@
 
 ### 0.1.1
   * Checksum support for orderbooks
+  * FTX checksum support
+  * Kraken checksum support
 
 ### 0.1.0 (2021-01-18)
   * Use enums to make code more readable
