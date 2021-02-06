@@ -6,8 +6,12 @@ Please see the LICENSE file for the terms and conditions
 associated with this software.
 '''
 from decimal import Decimal
+import json
+import zlib
 
 import pytest
+import requests
+from sortedcontainers import SortedDict as sd
 
 from order_book import OrderBook
 
@@ -54,3 +58,67 @@ def test_kraken_checksum():
         ob.bids[Decimal(b[0])] = Decimal(b[1])
 
     assert ob.checksum() == 974947235
+
+
+def test_okex_checksum():
+    ob = OrderBook(checksum_format='OKEX')
+
+    asks = {Decimal("3366.8"): Decimal("9"), Decimal("3368"): Decimal("8"), Decimal("3372"): Decimal("8")}
+    bids = {Decimal("3366.1"): Decimal("7")}
+    expected = 831078360
+
+    ob.bids = bids
+    ob.asks = asks
+
+    assert ob.checksum() == expected
+
+
+def test_okcoin_checksum():
+    ob = OrderBook(checksum_format='OKCOIN')
+
+    asks = {Decimal("3366.8"): Decimal("9"), Decimal("3368"): Decimal("8"), Decimal("3372"): Decimal("8")}
+    bids = {Decimal("3366.1"): Decimal("7")}
+    expected = 831078360
+
+    ob.bids = bids
+    ob.asks = asks
+
+    assert ob.checksum() == expected
+
+
+def test_ftx_checksum():
+    BID = 'bid'
+    ASK = 'ask'
+
+    r = requests.get("https://ftx.com/api/markets/BTC-PERP/orderbook?depth=100")
+    r.raise_for_status()
+    ftx_data = json.loads(r.text, parse_float=Decimal)
+
+    def ftx_checksum(book):
+        bid_it = reversed(book[BID])
+        ask_it = iter(book[ASK])
+
+        bids = [f"{bid}:{book[BID][bid]}" for bid in bid_it]
+        asks = [f"{ask}:{book[ASK][ask]}" for ask in ask_it]
+
+        if len(bids) == len(asks):
+            combined = [val for pair in zip(bids, asks) for val in pair]
+        elif len(bids) > len(asks):
+            combined = [val for pair in zip(bids[:len(asks)], asks) for val in pair]
+            combined += bids[len(asks):]
+        else:
+            combined = [val for pair in zip(bids, asks[:len(bids)]) for val in pair]
+            combined += asks[len(bids):]
+
+        computed = ":".join(combined).encode()
+        return zlib.crc32(computed)
+
+    ob = OrderBook(checksum_format='FTX')
+
+    book = {BID: sd({Decimal(update[0]): Decimal(update[1]) for update in ftx_data['result']['bids']}),
+            ASK: sd({Decimal(update[0]): Decimal(update[1]) for update in ftx_data['result']['asks']})
+            }
+    ob.bids = {Decimal(update[0]): Decimal(update[1]) for update in ftx_data['result']['bids']}
+    ob.asks = {Decimal(update[0]): Decimal(update[1]) for update in ftx_data['result']['asks']}
+
+    ob.checksum() == ftx_checksum(book)

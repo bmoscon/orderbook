@@ -77,6 +77,14 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
                 PyErr_SetNone(PyExc_MemoryError);
                 return -1;
             }
+        } else if ((checksum_str.len > 3) && ((strncmp(checksum_str.buf, "OKEX", 4) == 0) || (strncmp(checksum_str.buf, "OKCO", 4) == 0))) {
+            self->checksum = OKEX;
+            self->checksum_buffer = calloc(4096, sizeof(uint8_t));
+            self->checksum_len = 4096;
+            if (!self->checksum_buffer) {
+                PyErr_SetNone(PyExc_MemoryError);
+                return -1;
+            }
         } else {
             PyBuffer_Release(&checksum_str);
             PyErr_SetString(PyExc_TypeError, "invalid checksum format specified");
@@ -385,36 +393,44 @@ static int ftx_string_builder(PyObject *pydata, uint8_t *data, int *pos)
     return 0;
 }
 
-static PyObject* ftx_checksum(const Orderbook *ob)
+static PyObject* ftx_checksum(const Orderbook *ob, const uint32_t depth)
 {
-    if (ob->max_depth && ob->max_depth < 100) {
-        PyErr_SetString(PyExc_ValueError, "Max depth is less than minimum number of levels for FTX checksum");
+    if (ob->max_depth && ob->max_depth < depth) {
+        PyErr_SetString(PyExc_ValueError, "Max depth is less than minimum number of levels for checksum");
         return NULL;
     }
 
     int pos = 0;
+    uint32_t bids_size = SortedDict_len(ob->bids);
+    uint32_t asks_size = SortedDict_len(ob->asks);
+    PyObject *price = NULL;
+    PyObject *size = NULL;
 
-    for(int i = 0; i < 100; ++i) { // 100 is the FTX defined number of price/size pairs to use from each side
-        PyObject *price = PyTuple_GET_ITEM(ob->bids->keys, i);
-        PyObject *size = PyDict_GetItem(ob->bids->data, price);
+    for(uint32_t i = 0; i < depth; ++i) { // 100 is the FTX defined number of price/size pairs to use from each side, 25 is OKEX/OKCOIN
+        if (i < bids_size) {
+            price = PyTuple_GET_ITEM(ob->bids->keys, i);
+            size = PyDict_GetItem(ob->bids->data, price);
 
-        if (ftx_string_builder(price, ob->checksum_buffer, &pos)) {
-            return NULL;
+            if (ftx_string_builder(price, ob->checksum_buffer, &pos)) {
+                return NULL;
+            }
+
+            if (ftx_string_builder(size, ob->checksum_buffer, &pos)) {
+                return NULL;
+            }
         }
 
-        if (ftx_string_builder(size, ob->checksum_buffer, &pos)) {
-            return NULL;
-        }
+        if (i < asks_size) {
+            price = PyTuple_GET_ITEM(ob->asks->keys, i);
+            size = PyDict_GetItem(ob->asks->data, price);
 
-        price = PyTuple_GET_ITEM(ob->asks->keys, i);
-        size = PyDict_GetItem(ob->asks->data, price);
+            if (ftx_string_builder(price, ob->checksum_buffer, &pos)) {
+                return NULL;
+            }
 
-        if (ftx_string_builder(price, ob->checksum_buffer, &pos)) {
-            return NULL;
-        }
-
-        if (ftx_string_builder(size, ob->checksum_buffer, &pos)) {
-            return NULL;
+            if (ftx_string_builder(size, ob->checksum_buffer, &pos)) {
+                return NULL;
+            }
         }
     }
 
@@ -429,9 +445,10 @@ static PyObject* calculate_checksum(const Orderbook *ob)
     switch (ob->checksum) {
         case KRAKEN:
             return kraken_checksum(ob);
-            break;
         case FTX:
-        return ftx_checksum(ob);
+            return ftx_checksum(ob, 100);
+        case OKEX:
+            return ftx_checksum(ob, 25);
         default:
             return NULL;
     }

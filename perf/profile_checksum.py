@@ -1,8 +1,7 @@
 from decimal import Decimal
+import json
 import time
 import zlib
-
-from yapic import json
 
 from sortedcontainers import SortedDict as sd
 from order_book import OrderBook
