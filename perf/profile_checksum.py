@@ -2,6 +2,8 @@ from decimal import Decimal
 import time
 import zlib
 
+from yapic import json
+
 from sortedcontainers import SortedDict as sd
 from order_book import OrderBook
 import requests
@@ -10,6 +12,11 @@ import requests
 r = requests.get("https://api.kraken.com/0/public/Depth?pair=XETHZUSD&count=1000")
 r.raise_for_status()
 data = r.json()
+
+
+r = requests.get("https://ftx.com/api/markets/BTC-PERP/orderbook?depth=100")
+r.raise_for_status()
+ftx_data = json.loads(r.text, parse_float=Decimal)
 
 
 BID = 'bid'
@@ -26,7 +33,27 @@ def calc_checksum(book):
         prices = [str(price).replace('.', '').lstrip('0') for price in d]
         combined += ''.join([b for a in zip(prices, sizes) for b in a])
 
-    return str(zlib.crc32(combined.encode()))
+    return zlib.crc32(combined.encode())
+
+
+def ftx_checksum(book):
+    bid_it = reversed(book[BID])
+    ask_it = iter(book[ASK])
+
+    bids = [f"{bid}:{book[BID][bid]}" for bid in bid_it]
+    asks = [f"{ask}:{book[ASK][ask]}" for ask in ask_it]
+
+    if len(bids) == len(asks):
+        combined = [val for pair in zip(bids, asks) for val in pair]
+    elif len(bids) > len(asks):
+        combined = [val for pair in zip(bids[:len(asks)], asks) for val in pair]
+        combined += bids[len(asks):]
+    else:
+        combined = [val for pair in zip(bids, asks[:len(bids)]) for val in pair]
+        combined += asks[len(bids):]
+
+    computed = ":".join(combined).encode()
+    return zlib.crc32(computed)
 
 
 def main():
@@ -65,9 +92,10 @@ def main():
     start = time.time()
     checksum = calc_checksum(book)
     end = time.time()
-    assert checksum == '974947235'
+    assert checksum == 974947235
 
-    print("Depth 10 Example")
+    print("Kraken")
+    print("Depth 10")
     print(f"Python: {(end - start) * 1000000} microseconds")
 
     start = time.time()
@@ -78,7 +106,7 @@ def main():
 
     print(f"C: {(end - start) * 1000000} microseconds")
 
-    print("\nDepth 1000 Example")
+    print("\nDepth 1000")
 
     book = {BID: sd({Decimal(update[0]): Decimal(update[1]) for update in data['result']['XETHZUSD']['bids']}),
             ASK: sd({Decimal(update[0]): Decimal(update[1]) for update in data['result']['XETHZUSD']['asks']})
@@ -99,7 +127,30 @@ def main():
 
     print(f"C: {(end - start) * 1000000} microseconds")
 
-    assert checksum1 == str(checksum2)
+    assert checksum1 == checksum2
+
+    print("\n\nFTX")
+
+    ob = OrderBook(checksum_format='FTX')
+
+    book = {BID: sd({Decimal(update[0]): Decimal(update[1]) for update in ftx_data['result']['bids']}),
+            ASK: sd({Decimal(update[0]): Decimal(update[1]) for update in ftx_data['result']['asks']})
+            }
+    ob.bids = {Decimal(update[0]): Decimal(update[1]) for update in ftx_data['result']['bids']}
+    ob.asks = {Decimal(update[0]): Decimal(update[1]) for update in ftx_data['result']['asks']}
+
+    start = time.time()
+    checksum1 = ftx_checksum(book)
+    end = time.time()
+
+    print(f"Python: {(end - start) * 1000000} microseconds")
+
+    start = time.time()
+    checksum2 = ob.checksum()
+    end = time.time()
+
+    print(f"C: {(end - start) * 1000000} microseconds")
+    assert checksum1 == checksum2
 
 
 if __name__ == '__main__':

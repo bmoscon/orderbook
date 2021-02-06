@@ -10,6 +10,9 @@ associated with this software.
 
 void Orderbook_dealloc(Orderbook *self)
 {
+    if (self->checksum_buffer) {
+        free(self->checksum_buffer);
+    }
     Py_XDECREF(self->bids);
     Py_XDECREF(self->asks);
     Py_TYPE(self)->tp_free((PyObject *) self);
@@ -41,6 +44,8 @@ PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         self->max_depth = 0;
         self->truncate = false;
         self->checksum = INVALID_CHECKSUM_FORMAT;
+        self->checksum_buffer = NULL;
+        self->checksum_len = 0;
     }
     return (PyObject *) self;
 }
@@ -58,8 +63,20 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
     if (checksum_str.len) {
         if (strncmp(checksum_str.buf, "KRAKEN", checksum_str.len) == 0) {
             self->checksum = KRAKEN;
+            self->checksum_buffer = calloc(2048, sizeof(uint8_t));
+            self->checksum_len = 2048;
+            if (!self->checksum_buffer) {
+                PyErr_SetNone(PyExc_MemoryError);
+                return -1;
+            }
         } else if ((checksum_str.len > 2) && (strncmp(checksum_str.buf, "FTX", 3) == 0)) {
             self->checksum = FTX;
+            self->checksum_buffer = calloc(20480, sizeof(uint8_t));
+            self->checksum_len = 20480;
+            if (!self->checksum_buffer) {
+                PyErr_SetNone(PyExc_MemoryError);
+                return -1;
+            }
         } else {
             PyBuffer_Release(&checksum_str);
             PyErr_SetString(PyExc_TypeError, "invalid checksum format specified");
@@ -130,6 +147,8 @@ PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored)
     if (update_keys(self->asks)) {
         return NULL;
     }
+
+    memset(self->checksum_buffer, 0, self->checksum_len);
 
     return calculate_checksum(self);
 }
@@ -256,7 +275,7 @@ PyMODINIT_FUNC PyInit_order_book(void)
 
 
 // Checksums Code
-static int kraken_populate(PyObject *pydata, uint8_t *data, int *pos)
+static int kraken_string_builder(PyObject *pydata, uint8_t *data, int *pos)
 {
     PyObject *repr = PyObject_Str(pydata);
     if (!repr) {
@@ -264,32 +283,51 @@ static int kraken_populate(PyObject *pydata, uint8_t *data, int *pos)
     }
 
     PyObject* str = PyUnicode_AsEncodedString(repr, "UTF-8", "strict");
+    Py_DECREF(repr);
     if (!str) {
-        Py_DECREF(repr);
         return -1;
     }
 
     const char *string = PyBytes_AS_STRING(str);
     if (!string) {
         Py_DECREF(str);
-        Py_DECREF(repr);
         return -1;
     }
 
-    const char *ptr = string;
     bool leading_zero = true;
-    while (*ptr) {
-        if (*ptr != '.') {
-            if (*ptr != '0' && leading_zero) {
+    while (*string) {
+        if (*string != '.') {
+            if (*string != '0' && leading_zero) {
                 leading_zero = false;
             }
-            if (*ptr == '0' && leading_zero) {
-                ptr++;
+            if (*string == '0' && leading_zero) {
+                string++;
                 continue;
             }
-            data[(*pos)++] = *ptr;
+            data[(*pos)++] = *string;
         }
-        ptr++;
+        string++;
+    }
+
+    Py_DECREF(str);
+
+    return 0;
+}
+
+
+static int kraken_populate_side(const SortedDict *side, uint8_t *data, int *pos)
+{
+    for(int i = 0; i < 10; ++i) { // 10 is the kraken defined number of price/size pairs to use from each side
+        PyObject *price = PyTuple_GET_ITEM(side->keys, i);
+        PyObject *size = PyDict_GetItem(side->data, price);
+
+        if (kraken_string_builder(price, data, pos)) {
+            return -1;
+        }
+
+        if (kraken_string_builder(size, data, pos)) {
+            return -1;
+        }
     }
 
     return 0;
@@ -303,47 +341,84 @@ static PyObject* kraken_checksum(const Orderbook *ob)
         return NULL;
     }
 
-    uint8_t *data = calloc(1024, sizeof(uint8_t));
     int pos = 0;
 
-    if (!data) {
-        return PyErr_NoMemory();
+    if (kraken_populate_side(ob->asks, ob->checksum_buffer, &pos)) {
+        return NULL;
     }
 
-    /* asks */
-    for(int i = 0; i < 10; ++i) { // 10 is the kraken defined number of price/size pairs to use from each side
-        PyObject *price = PyTuple_GET_ITEM(ob->asks->keys, i);
-        PyObject *size = PyDict_GetItem(ob->asks->data, price);
-
-        if (kraken_populate(price, data, &pos) == -1) {
-            free(data);
-            return NULL;
-        }
-
-        if (kraken_populate(size, data, &pos) == -1) {
-            free(data);
-            return NULL;
-        }
+    if (kraken_populate_side(ob->bids, ob->checksum_buffer, &pos)) {
+        return NULL;
     }
 
-    /* bids */
-    for(int i = 0; i < 10; ++i) { // 10 is the kraken defined number of price/size pairs to use from each side
+    unsigned long ret = crc32(ob->checksum_buffer, pos);
+    return PyLong_FromUnsignedLong(ret);
+}
+
+
+static int ftx_string_builder(PyObject *pydata, uint8_t *data, int *pos)
+{
+    PyObject *repr = PyObject_Str(pydata);
+    if (!repr) {
+        return -1;
+    }
+
+    PyObject* str = PyUnicode_AsEncodedString(repr, "UTF-8", "strict");
+    Py_DECREF(repr);
+    if (!str) {
+        return -1;
+    }
+
+    const char *string = PyBytes_AS_STRING(str);
+    if (!string) {
+        Py_DECREF(str);
+        return -1;
+    }
+
+    int len = strlen(string);
+    memcpy(&data[*pos], string, len);
+    *pos += len;
+    data[(*pos)++] = ':';
+
+    Py_DECREF(str);
+
+    return 0;
+}
+
+static PyObject* ftx_checksum(const Orderbook *ob)
+{
+    if (ob->max_depth && ob->max_depth < 100) {
+        PyErr_SetString(PyExc_ValueError, "Max depth is less than minimum number of levels for FTX checksum");
+        return NULL;
+    }
+
+    int pos = 0;
+
+    for(int i = 0; i < 100; ++i) { // 100 is the FTX defined number of price/size pairs to use from each side
         PyObject *price = PyTuple_GET_ITEM(ob->bids->keys, i);
         PyObject *size = PyDict_GetItem(ob->bids->data, price);
 
-        if (kraken_populate(price, data, &pos) == -1) {
-            free(data);
+        if (ftx_string_builder(price, ob->checksum_buffer, &pos)) {
             return NULL;
         }
 
-        if (kraken_populate(size, data, &pos) == -1) {
-            free(data);
+        if (ftx_string_builder(size, ob->checksum_buffer, &pos)) {
+            return NULL;
+        }
+
+        price = PyTuple_GET_ITEM(ob->asks->keys, i);
+        size = PyDict_GetItem(ob->asks->data, price);
+
+        if (ftx_string_builder(price, ob->checksum_buffer, &pos)) {
+            return NULL;
+        }
+
+        if (ftx_string_builder(size, ob->checksum_buffer, &pos)) {
             return NULL;
         }
     }
 
-    unsigned long ret = crc32(data, pos);
-    free(data);
+    unsigned long ret = crc32(ob->checksum_buffer, pos-1);
 
     return PyLong_FromUnsignedLong(ret);
 }
@@ -355,6 +430,8 @@ static PyObject* calculate_checksum(const Orderbook *ob)
         case KRAKEN:
             return kraken_checksum(ob);
             break;
+        case FTX:
+        return ftx_checksum(ob);
         default:
             return NULL;
     }

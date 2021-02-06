@@ -29,6 +29,8 @@ typedef struct {
     SortedDict *bids;
     SortedDict *asks;
     uint32_t max_depth;
+    uint8_t *checksum_buffer;
+    uint32_t checksum_len;
     enum Checksums checksum;
     bool truncate;
 } Orderbook;
