@@ -63,6 +63,12 @@ print(ob.asks.to_dict())
 
 ```
 
+### Main Features
+
+* Sides maintained in correct order
+* Can perform orderbook checksums
+* Supports max depth and depth truncation
+
 
 ### Installation
 
