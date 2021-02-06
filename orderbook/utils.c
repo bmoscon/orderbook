@@ -29,7 +29,7 @@ https://stackoverflow.com/questions/302914/crc32-c-or-c-implementation
 
 This code is not subject to the license of this software.
 
-Author states license is free to use for all purposes, including commercial.
+Author states CRC32 source code is free to use for all purposes, including commercial.
 */
 uint32_t crc32_table(const uint8_t *data, size_t len)
 {
