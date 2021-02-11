@@ -7,7 +7,7 @@
 ![coverage-functions](https://img.shields.io/badge/coverage%3A%20functions-100%25-blue)
 
 
-A ***fast*** orderbook implementation, in C, for Python
+A ***fast*** L2/L3 orderbook implementation, in C, for Python
 
 
 ### Basic Usage
