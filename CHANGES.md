@@ -1,9 +1,10 @@
 ## Changelog
 
-### 0.1.1
+### 0.1.1 (2021-02-12)
   * Feature: Checksum support for orderbooks
   * Feature: FTX checksum support
   * Feature: Kraken checksum support
+  * Feature: OkEX/OKCoin checksum support
   * Perf: Use CRC32 table to improve performance of checksum code
 
 ### 0.1.0 (2021-01-18)
