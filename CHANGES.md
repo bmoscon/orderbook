@@ -1,5 +1,8 @@
 ## Changelog
 
+### 0.2.0
+  * Feature: Add branch prediction hints around error handling code
+
 ### 0.1.1 (2021-02-12)
   * Feature: Checksum support for orderbooks
   * Feature: FTX checksum support
