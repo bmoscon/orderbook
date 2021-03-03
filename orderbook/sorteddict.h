@@ -48,6 +48,8 @@ Py_ssize_t SortedDict_len(SortedDict *self);
 PyObject *SortedDict_getitem(SortedDict *self, PyObject *key);
 int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value);
 
+int SortedDict_contains(const SortedDict *self, PyObject *value);
+
 PyObject *SortedDict_next(SortedDict *self);
 
 
@@ -77,6 +79,11 @@ static PyMappingMethods SortedDict_mapping = {
 	(objobjargproc)SortedDict_setitem
 };
 
+// Sorted Seq Setup
+static PySequenceMethods SortedDict_seq = {
+    .sq_contains = (objobjproc)SortedDict_contains
+};
+
 // SortedDict PyType Def
 static PyTypeObject SortedDictType = {
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -91,6 +98,7 @@ static PyTypeObject SortedDictType = {
     .tp_members = SortedDict_members,
     .tp_methods = SortedDict_methods,
     .tp_as_mapping = &SortedDict_mapping,
+    .tp_as_sequence = &SortedDict_seq,
     .tp_iter  = PyObject_SelfIter,
     .tp_iternext = (iternextfunc) SortedDict_next,
     .tp_dictoffset = 0,

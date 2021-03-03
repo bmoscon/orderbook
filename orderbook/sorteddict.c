@@ -159,6 +159,7 @@ inline int update_keys(SortedDict *self) {
     }
 
     PyObject *keys = PyDict_Keys(self->data);
+
     if (__builtin_expect(!keys, 0)) {
         return 1;
     }
@@ -175,11 +176,11 @@ inline int update_keys(SortedDict *self) {
         }
     }
 
-     PyObject *ret = PySequence_Tuple(keys);
-     Py_DECREF(keys);
-     if (__builtin_expect(!ret, 0)) {
-         return 1;
-     }
+    PyObject *ret = PySequence_Tuple(keys);
+    Py_DECREF(keys);
+    if (__builtin_expect(!ret, 0)) {
+        return 1;
+    }
 
     if (self->keys) {
         Py_DECREF(self->keys);
@@ -355,6 +356,12 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
     }
 }
 
+/* Seq Functions */
+int SortedDict_contains(const SortedDict *self, PyObject *value)
+{
+    return PySequence_Contains(self->data, value);
+}
+
 /* iterator methods */
 PyObject *SortedDict_next(SortedDict *self)
 {
@@ -376,7 +383,7 @@ PyObject *SortedDict_next(SortedDict *self)
     } else {
         self->iterator_index++;
         Py_ssize_t size = PySequence_Fast_GET_SIZE(self->keys);
-        if (size == self->iterator_index) {
+        if (size <= self->iterator_index) {
             self->iterator_index = -1;
             return NULL;
         }
