@@ -328,7 +328,7 @@ PyObject *SortedDict_getitem(SortedDict *self, PyObject *key)
         return ret;
     }
 
-    if (__builtin_expect(PyErr_Occurred() != NULL, 0)) {
+    if (__builtin_expect(!PyErr_Occurred(), 0)) {
         PyErr_SetString(PyExc_KeyError, "key does not exist");
     }
 
