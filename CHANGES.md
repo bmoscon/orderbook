@@ -2,6 +2,9 @@
 
 ### 0.2.0
   * Feature: Add branch prediction hints around error handling code
+  * Bugfix: Fix regression from adding branch predictors
+  * Bugfix: Fix error corner case when iterating twice on an empty dataset
+  * Feature: Add contains function for membership test
 
 ### 0.1.1 (2021-02-12)
   * Feature: Checksum support for orderbooks
