@@ -162,3 +162,27 @@ def test_checksum_raises():
     with pytest.raises(ValueError):
         ob = OrderBook()
         ob.checksum()
+
+
+def test_l3_orderbook():
+    ob = OrderBook()
+
+    data = requests.get("https://api.pro.coinbase.com/products/BTC-USD/book?level=3").json()
+    for side, d in data.items():
+        if side in {'bids', 'asks'}:
+            for price, size, orderid in d:
+                p = Decimal(price)
+                if p in ob[side]:
+                    ob[side][p][orderid] = size
+                    assert p in ob[side]
+                    assert len(ob[side][p]) > 1
+                else:
+                    ob[side][p] = {orderid: size}
+                    assert p in ob[side]
+                    assert len(ob[side][p]) == 1
+
+    assert ob.bids.index(0)[0] < ob.asks.index(0)[0]
+    assert ob.bids.index(-1)[0] < ob.asks.index(-1)[0]
+
+    assert ob.bids.index(-1)[0] < ob.bids.index(0)[0]
+    assert ob.asks.index(-1)[0] > ob.asks.index(0)[0]
