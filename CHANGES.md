@@ -1,6 +1,6 @@
 ## Changelog
 
-### 0.2.0
+### 0.2.0 (2021-03-12)
   * Feature: Add branch prediction hints around error handling code
   * Bugfix: Fix regression from adding branch predictors
   * Bugfix: Fix error corner case when iterating twice on an empty dataset
