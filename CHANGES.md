@@ -5,6 +5,8 @@
   * Bugfix: Fix regression from adding branch predictors
   * Bugfix: Fix error corner case when iterating twice on an empty dataset
   * Feature: Add contains function for membership test
+  * Bugfix: Fix issues around storing L3 data
+  * Feature: Enhance testing, add in L3 book test cases
 
 ### 0.1.1 (2021-02-12)
   * Feature: Checksum support for orderbooks
