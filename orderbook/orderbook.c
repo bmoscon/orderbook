@@ -211,11 +211,10 @@ int Orderbook_setitem(const Orderbook *self, PyObject *key, PyObject *value)
     }
 
     enum side_e key_int = check_key(PyBytes_AsString(str));
-    Py_DECREF(key);
+    Py_DECREF(str);
 
     if (__builtin_expect(key_int == INVALID_SIDE, 0)) {
         PyErr_SetString(PyExc_ValueError, "key must one of bid/ask");
-        Py_DECREF(str);
         return -1;
     }
 
