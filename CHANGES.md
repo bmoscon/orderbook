@@ -1,5 +1,8 @@
 ## Changelog
 
+### 0.2.1
+  * Bugfix: Invalid deallocation of python object
+
 ### 0.2.0 (2021-03-12)
   * Feature: Add branch prediction hints around error handling code
   * Bugfix: Fix regression from adding branch predictors
