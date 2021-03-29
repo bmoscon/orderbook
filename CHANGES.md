@@ -1,6 +1,6 @@
 ## Changelog
 
-### 0.2.1
+### 0.2.1 (2021-03-29)
   * Bugfix: Invalid deallocation of python object
 
 ### 0.2.0 (2021-03-12)
