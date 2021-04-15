@@ -1,5 +1,8 @@
 ## Changelog
 
+### 0.3.0
+  * Update classifiers to indicate this projects only supports MacOS/Linux
+
 ### 0.2.1 (2021-03-29)
   * Bugfix: Invalid deallocation of python object
 
