@@ -2,6 +2,7 @@
 
 ### 0.3.0
   * Update classifiers to indicate this projects only supports MacOS/Linux
+  * Bugfix: Using less than the minimum number of levels for a checksum with Kraken not raising error correctly
 
 ### 0.2.1 (2021-03-29)
   * Bugfix: Invalid deallocation of python object
