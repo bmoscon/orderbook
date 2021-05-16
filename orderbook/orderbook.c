@@ -348,8 +348,15 @@ static PyObject* kraken_checksum(const Orderbook *ob)
         return NULL;
     }
 
-    int pos = 0;
+    uint32_t bids_size = SortedDict_len(ob->bids);
+    uint32_t asks_size = SortedDict_len(ob->asks);
 
+    if (__builtin_expect(bids_size < 10 || asks_size < 10, 0)) {
+        PyErr_SetString(PyExc_ValueError, "Depth is less than minimum number of levels for Kraken checksum");
+        return NULL;
+    }
+
+    int pos = 0;
     if (__builtin_expect(kraken_populate_side(ob->asks, ob->checksum_buffer, &pos), 0)) {
         return NULL;
     }
