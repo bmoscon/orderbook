@@ -193,3 +193,19 @@ def test_l3_orderbook():
 
     for side in raw_dict:
         assert raw_dict[side] == ob[side].to_dict()
+
+
+def test_del():
+    ob = OrderBook()
+
+    ob.bids = {1: 1, 2: 2}
+    ob.asks = {5: 5, 6: 6, 7: 7}
+
+    assert len(ob.bids) == 2
+
+    del ob.bids[1]
+
+    assert 1 not in ob.bids
+    assert 2 in ob.bids
+    assert len(ob.bids) == 1
+    assert ob.bids.to_dict() == {2: 2}
