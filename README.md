@@ -57,7 +57,7 @@ for price in ob.asks:
 
 
 # Data can be exported to a sorted dictionary
-# in Python3.7+ dictionaries remain in insertion ordering, the
+# In Python3.7+ dictionaries remain in insertion ordering. The
 # dict returned by .to_dict() has had its keys inserted in sorted order
 print("\n\nRaw asks dictionary")
 print(ob.asks.to_dict())
