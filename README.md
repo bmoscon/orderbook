@@ -45,6 +45,8 @@ print(f"The spread is {ob.asks.index(0)[0] - ob.bids.index(0)[0]}\n\n")
 
 # Data is accessible via iteration
 
+* Note: bids/asks are iterators
+
 print("Bids")
 for price in ob.bids:
     print(f"Price: {price} Size: {ob.bids[price]}")
