@@ -2,6 +2,7 @@
 
 ### 0.3.1
   * Bugfix: truncate and max_depth not being passed from orderbook to sorteddict object correctly
+  * Feature: let checksum_format kwarg be set to None
 
 ### 0.3.0 (2021-07-16)
   * Update classifiers to indicate this projects only supports MacOS/Linux

@@ -56,11 +56,12 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
     static char *kwlist[] = {"max_depth", "max_depth_strict", "checksum_format", NULL};
     Py_buffer checksum_str = {0};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|ips*", kwlist, &self->max_depth, &self->truncate, &checksum_str)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|ipz*", kwlist, &self->max_depth, &self->truncate, &checksum_str)) {
         return -1;
     }
 
-    if (checksum_str.len) {
+
+    if (checksum_str.buf && checksum_str.len) {
         if (strncmp(checksum_str.buf, "KRAKEN", checksum_str.len) == 0) {
             self->checksum = KRAKEN;
             self->checksum_buffer = calloc(2048, sizeof(uint8_t));
