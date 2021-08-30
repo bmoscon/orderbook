@@ -94,6 +94,11 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
         self->checksum = INVALID_CHECKSUM_FORMAT;
     }
 
+    self->bids->depth = self->max_depth;
+    self->bids->truncate = self->truncate;
+    self->asks->depth = self->max_depth;
+    self->asks->truncate = self->truncate;
+
     PyBuffer_Release(&checksum_str);
 
     return 0;

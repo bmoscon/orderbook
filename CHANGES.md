@@ -1,5 +1,8 @@
 ## Changelog
 
+### 0.3.1
+  * Bugfix: truncate and max_depth not being passed from orderbook to sorteddict object correctly
+
 ### 0.3.0 (2021-07-16)
   * Update classifiers to indicate this projects only supports MacOS/Linux
   * Bugfix: Using less than the minimum number of levels for a checksum with Kraken not raising error correctly

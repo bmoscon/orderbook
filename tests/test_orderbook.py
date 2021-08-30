@@ -67,7 +67,7 @@ def test_orderbook_getitem():
         ob['invalid'][1] = 3
 
 
-def test_orderbook_init():
+def test_orderbook_init_errors():
     with pytest.raises(TypeError):
         OrderBook('a')
 
@@ -76,6 +76,13 @@ def test_orderbook_init():
 
     with pytest.raises(TypeError):
         OrderBook(max_depth='a')
+
+
+def test_orderbook_init():
+    ob = OrderBook(max_depth=10)
+    ob.bids = {val: val for val in range(20)}
+    ob.asks = {val: val for val in range(10, 30)}
+    assert len(ob) == 20
 
 
 def test_orderbook_len():
