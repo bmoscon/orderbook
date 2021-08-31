@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flake8 pytest
+          pip install flake8 pytest requests sortedcontainers
           python setup.py install
       - name: Test with pytest
         run: |
