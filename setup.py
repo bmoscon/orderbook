@@ -33,7 +33,7 @@ class Test(TestCommand):
 
 setup(
     name='order_book',
-    version='0.3.1',
+    version='0.3.2',
     author="Bryant Moscon",
     author_email="bmoscon@gmail.com",
     description="A fast orderbook implementation, in C, for Python",
