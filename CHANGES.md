@@ -1,5 +1,8 @@
 ## Changelog
 
+### 0.3.2
+ * Bugfix: depth was incorrectly ignored when converting sorteddict to python dict
+
 ### 0.3.1 (2021-09-01)
   * Bugfix: truncate and max_depth not being passed from orderbook to sorteddict object correctly
   * Feature: let checksum_format kwarg be set to None

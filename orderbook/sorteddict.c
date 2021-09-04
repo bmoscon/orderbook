@@ -261,6 +261,10 @@ PyObject* SortedDict_todict(SortedDict *self, PyObject *Py_UNUSED(ignored))
     }
 
     int len = PySequence_Length(self->keys);
+    if ((self->depth > 0) && (self->depth < len)) {
+        len = self->depth;
+    }
+
     for(int i = 0; i < len; ++i) {
         PyObject *key = PyTuple_GET_ITEM(self->keys, i);
         PyObject *value = PyDict_GetItem(self->data, key);
