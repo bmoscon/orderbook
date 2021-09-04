@@ -264,6 +264,8 @@ def test_depth():
     assert d.keys() == (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
     assert len(d) == 10
 
+    assert len(d.to_dict()) == 10
+
 
 def test_depth_nontruncated():
     d = SortedDict({i: i for i in range(100)}, max_depth=10)
