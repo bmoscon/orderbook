@@ -7,6 +7,12 @@ associated with this software.
 #ifndef __UTILS__
 #define __UTILS__
 
+#if defined(_WIN32)
+#define EXPECT(EXPR, VAL) (EXPR)
+#else
+#define EXPECT(EXPR, VAL) __builtin_expect((EXPR), (VAL))
+#endif
+
 enum side_e {
     BID,
     ASK,

@@ -160,17 +160,17 @@ inline int update_keys(SortedDict *self) {
 
     PyObject *keys = PyDict_Keys(self->data);
 
-    if (__builtin_expect(!keys, 0)) {
+    if (EXPECT(!keys, 0)) {
         return 1;
     }
 
-    if (__builtin_expect(PyList_Sort(keys) < 0, 0)) {
+    if (EXPECT(PyList_Sort(keys) < 0, 0)) {
         Py_DECREF(keys);
         return 1;
     }
 
     if (self->ordering == DESCENDING) {
-        if (__builtin_expect(PyList_Reverse(keys) < 0, 0)) {
+        if (EXPECT(PyList_Reverse(keys) < 0, 0)) {
             Py_DECREF(keys);
             return 1;
         }
@@ -178,7 +178,7 @@ inline int update_keys(SortedDict *self) {
 
     PyObject *ret = PySequence_Tuple(keys);
     Py_DECREF(keys);
-    if (__builtin_expect(!ret, 0)) {
+    if (EXPECT(!ret, 0)) {
         return 1;
     }
 
@@ -195,7 +195,7 @@ inline int update_keys(SortedDict *self) {
 
 PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored))
 {
-    if (__builtin_expect(update_keys(self), 0)) {
+    if (EXPECT(update_keys(self), 0)) {
         return NULL;
     }
 
@@ -214,29 +214,29 @@ PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored))
 PyObject* SortedDict_index(SortedDict *self, PyObject *index)
 {
     long i = PyLong_AsLong(index);
-    if (__builtin_expect(PyErr_Occurred() != NULL, 0)) {
+    if (EXPECT(PyErr_Occurred() != NULL, 0)) {
         return NULL;
     }
 
-    if (__builtin_expect(update_keys(self), 0)) {
+    if (EXPECT(update_keys(self), 0)) {
         return NULL;
     }
 
     // new reference
     PyObject *key = PySequence_GetItem(self->keys, i);
-    if (__builtin_expect(!key, 0)) {
+    if (EXPECT(!key, 0)) {
         return NULL;
     }
 
     // borrowed reference
     PyObject *value = PyDict_GetItem(self->data, key);
-    if (__builtin_expect(!value, 0)) {
+    if (EXPECT(!value, 0)) {
         Py_DECREF(key);
         return value;
     }
 
     PyObject *ret = PyTuple_New(2);
-    if (__builtin_expect(!ret, 0)) {
+    if (EXPECT(!ret, 0)) {
         Py_DECREF(key);
         return NULL;
     }
@@ -252,11 +252,11 @@ PyObject* SortedDict_index(SortedDict *self, PyObject *index)
 PyObject* SortedDict_todict(SortedDict *self, PyObject *Py_UNUSED(ignored))
 {
     PyObject *ret = PyDict_New();
-    if (__builtin_expect(!ret, 0)) {
+    if (EXPECT(!ret, 0)) {
         return NULL;
     }
 
-    if (__builtin_expect(update_keys(self), 0)) {
+    if (EXPECT(update_keys(self), 0)) {
         return NULL;
     }
 
@@ -278,23 +278,23 @@ PyObject* SortedDict_todict(SortedDict *self, PyObject *Py_UNUSED(ignored))
 PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored))
 {
     if (self->depth) {
-        if (__builtin_expect(update_keys(self), 0)) {
+        if (EXPECT(update_keys(self), 0)) {
             return NULL;
         }
 
         PyObject *delete = PySequence_GetSlice(self->keys, self->depth, PyDict_Size(self->data));
-        if (__builtin_expect(!delete, 0)) {
+        if (EXPECT(!delete, 0)) {
             return NULL;
         }
 
         int len = PySequence_Length(delete);
-        if (__builtin_expect(len == -1, 0)) {
+        if (EXPECT(len == -1, 0)) {
             Py_DECREF(delete);
             return NULL;
         }
 
         for (int i = 0; i < len; ++i) {
-            if (__builtin_expect(PyDict_DelItem(self->data, PySequence_Fast_GET_ITEM(delete, i)) == -1, 0)) {
+            if (EXPECT(PyDict_DelItem(self->data, PySequence_Fast_GET_ITEM(delete, i)) == -1, 0)) {
                 Py_DECREF(delete);
                 return NULL;
             }
@@ -305,7 +305,7 @@ PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored))
             self->dirty = true;
         }
 
-        if (__builtin_expect(update_keys(self), 0)) {
+        if (EXPECT(update_keys(self), 0)) {
             return NULL;
         }
     }
@@ -333,7 +333,7 @@ PyObject *SortedDict_getitem(SortedDict *self, PyObject *key)
         return ret;
     }
 
-    if (__builtin_expect(!PyErr_Occurred(), 0)) {
+    if (EXPECT(!PyErr_Occurred(), 0)) {
         PyErr_SetString(PyExc_KeyError, "key does not exist");
     }
 
@@ -347,9 +347,9 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
     if (value) {
         int ret = PyDict_SetItem(self->data, key, value);
 
-        if (__builtin_expect(ret == -1, 0)) {
+        if (EXPECT(ret == -1, 0)) {
             return ret;
-        } else if (__builtin_expect(self->truncate && !SortedDict_truncate(self, NULL), 0)) {
+        } else if (EXPECT(self->truncate && !SortedDict_truncate(self, NULL), 0)) {
             return -1;
         }
 
@@ -372,12 +372,12 @@ PyObject *SortedDict_next(SortedDict *self)
     if (self->iterator_index == -1) {
         self->iterator_index = 0;
 
-        if (__builtin_expect(update_keys(self), 0)) {
+        if (EXPECT(update_keys(self), 0)) {
             return NULL;
         }
 
         Py_ssize_t size = PySequence_Fast_GET_SIZE(self->keys);
-        if (__builtin_expect(size == 0, 0)){
+        if (EXPECT(size == 0, 0)){
             return NULL;
         }
 
