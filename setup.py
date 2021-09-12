@@ -5,6 +5,7 @@ Please see the LICENSE file for the terms and conditions
 associated with this software.
 '''
 import glob
+import os
 from os import path
 from setuptools import setup, Extension, find_packages
 from setuptools.command.test import test as TestCommand
@@ -12,7 +13,8 @@ import sys
 
 
 sources = glob.glob('orderbook/*.c')
-orderbook = Extension('order_book', sources=sources, extra_compile_args=["-O3"])
+optimize_arg = "/O2" if os.name == "nt" else "-O3"
+orderbook = Extension('order_book', sources=sources, extra_compile_args=[optimize_arg])
 
 
 def get_long_description():
