@@ -2,6 +2,7 @@
 
 ### 0.4.0
  * Feature: changes to code and setup.py to enable compiling on windows
+ * Feature: add from_type/to_type kwargs to the to_dict methods, allowing for type conversion when creating the dictionary
 
 ### 0.3.2 (2021-09-04)
  * Bugfix: depth was incorrectly ignored when converting sorteddict to python dict

@@ -41,7 +41,7 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds);
 
 PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored));
 PyObject* SortedDict_index(SortedDict *self, PyObject *index);
-PyObject* SortedDict_todict(SortedDict *self, PyObject *Py_UNUSED(ignored));
+PyObject* SortedDict_todict(SortedDict *self, PyObject *unused, PyObject *kwargs);
 PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored));
 
 Py_ssize_t SortedDict_len(SortedDict *self);
@@ -65,9 +65,9 @@ static PyMemberDef SortedDict_members[] = {
 // SortedDict methods
 static PyMethodDef SortedDict_methods[] = {
     {"keys", (PyCFunction) SortedDict_keys, METH_NOARGS, "return a list of keys in the sorted dictionary"},
-    {"index", (PyCFunction) SortedDict_index, METH_O, "Return a key, value tuple at index N"},
-    {"truncate", (PyCFunction) SortedDict_truncate, METH_NOARGS, "Truncate to length max_depth"},
-    {"to_dict", (PyCFunction) SortedDict_todict, METH_NOARGS, "return a python dictionary, sorted by keys"},
+    {"index", (PyCFunction) SortedDict_index, METH_O, "return a key, value tuple at index N"},
+    {"truncate", (PyCFunction) SortedDict_truncate, METH_NOARGS, "truncate to length max_depth"},
+    {"to_dict", (PyCFunction) SortedDict_todict, METH_VARARGS | METH_KEYWORDS, "return a python dictionary, sorted by keys"},
     {NULL}
 };
 

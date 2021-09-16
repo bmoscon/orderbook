@@ -291,3 +291,20 @@ def test_depth_auto_truncate():
     d[1.2] = 0
     d[1.3] = 0
     assert d.keys() == (0, 1, 1.1, 1.2, 1.3, 2, 3, 4, 6, 7)
+
+
+def test_to_dict_types():
+    input = {
+        1: 2,
+        3.3: 4,
+        Decimal('5.6'): 7.8,
+        9: 11.11,
+        Decimal('1.3'): Decimal('3.3'),
+        77.8: Decimal('19.9')
+    }
+    d = SortedDict(input)
+
+    assert d.to_dict() == input
+    assert d.to_dict(to_type=str) == {'1': '2', '3.3': '4', '5.6': '7.8', '9': '11.11', '1.3': '3.3', '77.8': '19.9'}
+    assert d.to_dict(from_type=str, to_type=float) == input
+    assert d.to_dict(to_type=float, from_type=Decimal) == {1: 2, 3.3: 4, 5.6: 7.8, 9: 11.11, 1.3: 3.3, 77.8: 19.9}

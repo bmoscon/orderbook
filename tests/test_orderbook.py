@@ -198,8 +198,22 @@ def test_l3_orderbook():
     assert ob.bids.index(-1)[0] < ob.bids.index(0)[0]
     assert ob.asks.index(-1)[0] > ob.asks.index(0)[0]
 
+    ob_dict = ob.to_dict()
     for side in raw_dict:
-        assert raw_dict[side] == ob[side].to_dict()
+        assert raw_dict[side] == ob[side].to_dict() == ob_dict[side[:-1]]
+
+    # test to_dict with type conversion
+    def convert(x):
+        if isinstance(x, Decimal):
+            return float(x)
+        if isinstance(x, dict):
+            return {k: float(v) for k, v in x.items()}
+    print("DOING")
+    ob_dict = ob.to_dict(to_type=convert)
+    for price in ob_dict['bid']:
+        assert isinstance(price, float)
+        for value in list(ob_dict['bid'][price].values()):
+            assert isinstance(value, float)
 
 
 def test_del():
@@ -216,3 +230,19 @@ def test_del():
     assert 2 in ob.bids
     assert len(ob.bids) == 1
     assert ob.bids.to_dict() == {2: 2}
+
+
+def test_to_dict_types():
+    input = {
+        '1.1': 2,
+        '3.3': 4,
+        '5.5': 6,
+        '7.7': 8
+    }
+    ob = OrderBook()
+    ob.bids = input
+    ob.asks = input
+
+    data = ob.to_dict(from_type=str, to_type=float)
+    assert data['bid'] == {1.1: 2, 3.3: 4, 5.5: 6, 7.7: 8}
+    assert data['ask'] == {1.1: 2, 3.3: 4, 5.5: 6, 7.7: 8}

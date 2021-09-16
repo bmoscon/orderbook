@@ -41,7 +41,7 @@ void Orderbook_dealloc(Orderbook *self);
 PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds);
 int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds);
 
-PyObject* Orderbook_todict(const Orderbook *self, PyObject *Py_UNUSED(ignored));
+PyObject* Orderbook_todict(const Orderbook *self, PyObject *unused, PyObject *kwargs);
 PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored));
 
 
@@ -58,15 +58,15 @@ static PyMemberDef Orderbook_members[] = {
     {"bid", T_OBJECT_EX, offsetof(Orderbook, bids), 0, "bids"},
     {"asks", T_OBJECT_EX, offsetof(Orderbook, asks), 0, "asks"},
     {"ask", T_OBJECT_EX, offsetof(Orderbook, asks), 0, "asks"},
-    {"max_depth", T_INT, offsetof(Orderbook, max_depth), READONLY, "Maximum book depth"},
+    {"max_depth", T_INT, offsetof(Orderbook, max_depth), READONLY, "maximum book depth"},
     {NULL}
 };
 
 
 // Orderbook class methods
 static PyMethodDef Orderbook_methods[] = {
-    {"to_dict", (PyCFunction) Orderbook_todict, METH_NOARGS, "Return a python dictionary with bids and asks"},
-    {"checksum", (PyCFunction) Orderbook_checksum, METH_NOARGS, "Calculate checksum using top N levels"},
+    {"to_dict", (PyCFunction) Orderbook_todict, METH_VARARGS | METH_KEYWORDS, "return a python dictionary with bids and asks"},
+    {"checksum", (PyCFunction) Orderbook_checksum, METH_NOARGS, "calculate checksum using top N levels"},
     {NULL}
 };
 

@@ -107,20 +107,20 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
 
 
 /* Orderbook methods */
-PyObject* Orderbook_todict(const Orderbook *self, PyObject *Py_UNUSED(ignored))
+PyObject* Orderbook_todict(const Orderbook *self, PyObject *unused, PyObject *kwargs)
 {
     PyObject *ret = PyDict_New();
     if (EXPECT(!ret, 0)) {
         return NULL;
     }
 
-    PyObject *bids = SortedDict_todict(self->bids, NULL);
+    PyObject *bids = SortedDict_todict(self->bids, unused, kwargs);
     if (EXPECT(!bids, 0)) {
         Py_DECREF(ret);
         return NULL;
     }
 
-    PyObject *asks = SortedDict_todict(self->asks, NULL);
+    PyObject *asks = SortedDict_todict(self->asks, unused, kwargs);
     if (EXPECT(!asks, 0)) {
         Py_DECREF(bids);
         Py_DECREF(ret);

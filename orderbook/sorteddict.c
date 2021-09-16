@@ -42,6 +42,7 @@ PyObject *SortedDict_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         self->depth = 0;
         self->truncate = false;
     }
+
     return (PyObject *) self;
 }
 
@@ -249,14 +250,23 @@ PyObject* SortedDict_index(SortedDict *self, PyObject *index)
 }
 
 
-PyObject* SortedDict_todict(SortedDict *self, PyObject *Py_UNUSED(ignored))
+PyObject* SortedDict_todict(SortedDict *self, PyObject *unused, PyObject *kwargs)
 {
+    static char *kwlist[] = {"from_type", "to_type", NULL};
+    PyObject *from = NULL;
+    PyObject *to = NULL;
+
+    if (!PyArg_ParseTupleAndKeywords(unused, kwargs, "|$OO", kwlist, &from, &to)) {
+        return NULL;
+    }
+
     PyObject *ret = PyDict_New();
     if (EXPECT(!ret, 0)) {
         return NULL;
     }
 
     if (EXPECT(update_keys(self), 0)) {
+        Py_DECREF(ret);
         return NULL;
     }
 
@@ -265,10 +275,64 @@ PyObject* SortedDict_todict(SortedDict *self, PyObject *Py_UNUSED(ignored))
         len = self->depth;
     }
 
+    bool free_key, free_value;
+
     for(int i = 0; i < len; ++i) {
+        free_key = false;
+        free_value = false;
+
         PyObject *key = PyTuple_GET_ITEM(self->keys, i);
         PyObject *value = PyDict_GetItem(self->data, key);
+
+        if (to) {
+            if (!from || (from && (PyObject_IsInstance(key, from)))) {
+
+                PyObject *args = PyTuple_Pack(1, key);
+                if (EXPECT(!args, 0)) {
+                    Py_DECREF(ret);
+                    return NULL;
+                }
+
+                key = PyObject_CallObject(to, args);
+                Py_DECREF(args);
+                if (EXPECT(!key, 0)) {
+                    Py_DECREF(ret);
+                    return NULL;
+                }
+                free_key = true;
+            }
+            if (!from || (from && (PyObject_IsInstance(value, from)))) {
+
+                PyObject *args = PyTuple_Pack(1, value);
+                if (EXPECT(!args, 0)) {
+                    Py_DECREF(ret);
+                    if (free_key) {
+                        Py_DECREF(key);
+                    }
+                    return NULL;
+                }
+
+                value = PyObject_CallObject(to, args);
+                Py_DECREF(args);
+                if (EXPECT(!value, 0)) {
+                    Py_DECREF(ret);
+                    if (free_key) {
+                        Py_DECREF(key);
+                    }
+                    return NULL;
+                }
+                free_value = true;
+            }
+        }
+
         PyDict_SetItem(ret, key, value);
+
+        if (free_key) {
+            Py_DECREF(key);
+        }
+        if (free_value) {
+            Py_DECREF(value);
+        }
     }
 
     return ret;
