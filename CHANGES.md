@@ -1,6 +1,6 @@
 ## Changelog
 
-### 0.4.0
+### 0.4.0 (2021-09-16)
  * Feature: changes to code and setup.py to enable compiling on windows
  * Feature: add from_type/to_type kwargs to the to_dict methods, allowing for type conversion when creating the dictionary
 
