@@ -1,5 +1,9 @@
 ## Changelog
 
+### 0.4.1
+ * Bugfix: unnecessary reference counting prevented sorted dictionaries from being deallocated
+ * Bugfix: setting ordering on a sorted dict before checking that it was created successfully
+
 ### 0.4.0 (2021-09-16)
  * Feature: changes to code and setup.py to enable compiling on windows
  * Feature: add from_type/to_type kwargs to the to_dict methods, allowing for type conversion when creating the dictionary
