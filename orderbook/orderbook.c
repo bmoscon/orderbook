@@ -25,22 +25,20 @@ PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     self = (Orderbook *) type->tp_alloc(type, 0);
     if (self != NULL) {
         self->bids = (SortedDict *)SortedDict_new(&SortedDictType, NULL, NULL);
-        self->bids->ordering = DESCENDING;
-        if (!self->bids) {
+        if (self->bids == NULL) {
             Py_DECREF(self);
             return NULL;
         }
-        Py_INCREF(self->bids);
+        self->bids->ordering = DESCENDING;
 
         self->asks = (SortedDict *)SortedDict_new(&SortedDictType, NULL, NULL);
-        self->asks->ordering = ASCENDING;
-        if (!self->asks) {
+        if (self->asks == NULL) {
             Py_DECREF(self->bids);
             Py_DECREF(self);
             return NULL;
         }
+        self->asks->ordering = ASCENDING;
 
-        Py_INCREF(self->asks);
         self->max_depth = 0;
         self->truncate = false;
         self->checksum = INVALID_CHECKSUM_FORMAT;
