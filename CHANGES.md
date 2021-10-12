@@ -1,6 +1,6 @@
 ## Changelog
 
-### 0.4.1
+### 0.4.1 (2021-10-12)
  * Bugfix: unnecessary reference counting prevented sorted dictionaries from being deallocated
  * Bugfix: setting ordering on a sorted dict before checking that it was created successfully
 
