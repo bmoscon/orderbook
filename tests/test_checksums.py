@@ -60,8 +60,8 @@ def test_kraken_checksum():
     assert ob.checksum() == 974947235
 
 
-def test_okex_checksum():
-    ob = OrderBook(checksum_format='OKEX')
+def test_okx_checksum():
+    ob = OrderBook(checksum_format='OKX')
 
     asks = {Decimal("3366.8"): Decimal("9"), Decimal("3368"): Decimal("8"), Decimal("3372"): Decimal("8")}
     bids = {Decimal("3366.1"): Decimal("7")}

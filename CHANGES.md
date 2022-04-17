@@ -1,5 +1,9 @@
 ## Changelog
 
+### 0.4.2 (2022-04-17)
+ * Update: OKEx renamed OKX (for checksum validation)
+ * Feature: Add support for orderbook checksums with Bitget
+
 ### 0.4.1 (2021-10-12)
  * Bugfix: unnecessary reference counting prevented sorted dictionaries from being deallocated
  * Bugfix: setting ordering on a sorted dict before checking that it was created successfully

@@ -76,8 +76,16 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
                 PyErr_SetNone(PyExc_MemoryError);
                 return -1;
             }
-        } else if ((checksum_str.len > 3) && ((strncmp(checksum_str.buf, "OKEX", 4) == 0) || (strncmp(checksum_str.buf, "OKCO", 4) == 0))) {
-            self->checksum = OKEX;
+        } else if ((checksum_str.len > 2) && ((strncmp(checksum_str.buf, "OKX", 3) == 0) || (strncmp(checksum_str.buf, "OKCO", 4) == 0))) {
+            self->checksum = OKX;
+            self->checksum_buffer = calloc(4096, sizeof(uint8_t));
+            self->checksum_len = 4096;
+            if (!self->checksum_buffer) {
+                PyErr_SetNone(PyExc_MemoryError);
+                return -1;
+            }
+        } else if (strncmp(checksum_str.buf, "BITGET", checksum_str.len) == 0) {
+            self->checksum = BITGET;
             self->checksum_buffer = calloc(4096, sizeof(uint8_t));
             self->checksum_len = 4096;
             if (!self->checksum_buffer) {
@@ -416,7 +424,7 @@ static PyObject* ftx_checksum(const Orderbook *ob, const uint32_t depth)
     PyObject *price = NULL;
     PyObject *size = NULL;
 
-    for(uint32_t i = 0; i < depth; ++i) { // 100 is the FTX defined number of price/size pairs to use from each side, 25 is OKEX/OKCOIN
+    for(uint32_t i = 0; i < depth; ++i) { // 100 is the FTX defined number of price/size pairs to use from each side, 25 is OKX/OKCOIN
         if (i < bids_size) {
             price = PyTuple_GET_ITEM(ob->bids->keys, i);
             size = PyDict_GetItem(ob->bids->data, price);
@@ -457,7 +465,9 @@ static PyObject* calculate_checksum(const Orderbook *ob)
             return kraken_checksum(ob);
         case FTX:
             return ftx_checksum(ob, 100);
-        case OKEX:
+        case OKX:
+            return ftx_checksum(ob, 25);
+        case BITGET:
             return ftx_checksum(ob, 25);
         default:
             return NULL;

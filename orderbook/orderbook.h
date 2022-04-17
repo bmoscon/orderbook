@@ -21,7 +21,8 @@ enum Checksums {
     CHECKSUM_PROCESSING_ERROR = -1,
     KRAKEN,
     FTX,
-    OKEX,
+    OKX,
+    BITGET,
     INVALID_CHECKSUM_FORMAT
 };
 
