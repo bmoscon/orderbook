@@ -316,6 +316,9 @@ static int kraken_string_builder(PyObject *pydata, uint8_t *data, int *pos)
     bool leading_zero = true;
     while (*string) {
         if (*string != '.') {
+            if (*string == 'E' || *string == 'e') {
+                break;
+            }
             if (*string != '0' && leading_zero) {
                 leading_zero = false;
             }
@@ -336,7 +339,12 @@ static int kraken_string_builder(PyObject *pydata, uint8_t *data, int *pos)
 
 static int kraken_populate_side(const SortedDict *side, uint8_t *data, int *pos)
 {
-    for(int i = 0; i < 10; ++i) { // 10 is the kraken defined number of price/size pairs to use from each side
+    uint32_t size = SortedDict_len(side);
+    if (size > 10) { // 10 is the kraken defined number of price/size pairs to use from each side
+        size = 10;
+    }
+
+    for(uint32_t i = 0; i < size; ++i) {
         PyObject *price = PyTuple_GET_ITEM(side->keys, i);
         PyObject *size = PyDict_GetItem(side->data, price);
 
@@ -356,15 +364,7 @@ static int kraken_populate_side(const SortedDict *side, uint8_t *data, int *pos)
 static PyObject* kraken_checksum(const Orderbook *ob)
 {
     if (EXPECT(ob->max_depth && ob->max_depth < 10, 0)) {
-        PyErr_SetString(PyExc_ValueError, "Max depth is less than minimum number of levels for Kraken checksum");
-        return NULL;
-    }
-
-    uint32_t bids_size = SortedDict_len(ob->bids);
-    uint32_t asks_size = SortedDict_len(ob->asks);
-
-    if (EXPECT(bids_size < 10 || asks_size < 10, 0)) {
-        PyErr_SetString(PyExc_ValueError, "Depth is less than minimum number of levels for Kraken checksum");
+        PyErr_SetString(PyExc_ValueError, "Max depth is less than usual number of levels for Kraken checksum");
         return NULL;
     }
 

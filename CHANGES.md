@@ -1,5 +1,9 @@
 ## Changelog
 
+### 0.4.3
+ * Bugfix: handle scientific notation of small values in Kraken checksum
+ * Update: calculate Kraken checksum on order books less than 10 levels deep
+
 ### 0.4.2 (2022-04-17)
  * Update: OKEx renamed OKX (for checksum validation)
  * Feature: Add support for orderbook checksums with Bitget
