@@ -74,8 +74,8 @@ static PyMethodDef Orderbook_methods[] = {
 
 // Orderbook mapping functions
 static PyMappingMethods Orderbook_mapping = {
-	(lenfunc)Orderbook_len,
-	(binaryfunc)Orderbook_getitem,
+    (lenfunc)Orderbook_len,
+    (binaryfunc)Orderbook_getitem,
     (objobjargproc)Orderbook_setitem
 };
 
