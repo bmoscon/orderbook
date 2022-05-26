@@ -9,10 +9,6 @@ associated with this software.
 
 typedef int (*string_builder_t)(PyObject *pydata, uint8_t *data, int *pos);
 
-// reusable python objects referring to the builtin format function and a string 'f'
-static PyObject* format = NULL;
-static PyObject* formatf = NULL;
-
 
 void Orderbook_dealloc(Orderbook *self)
 {
@@ -274,6 +270,8 @@ int Orderbook_setattr(const PyObject *self, PyObject *attr, PyObject *value)
 PyMODINIT_FUNC PyInit_order_book(void)
 {
     PyObject *m;
+    OrderBookModuleState *st;
+
     if (PyType_Ready(&OrderbookType) < 0 || PyType_Ready(&SortedDictType) < 0)
         return NULL;
 
@@ -295,30 +293,66 @@ PyMODINIT_FUNC PyInit_order_book(void)
         return NULL;
     }
 
+    st = get_order_book_state(m);
+
     PyObject* builtins = PyImport_AddModule("builtins");
-    if (!builtins) {
+    if (builtins == NULL) {
         Py_DECREF(&SortedDictType);
         Py_DECREF(m);
         return NULL;
     }
 
-    format = PyObject_GetAttrString(builtins, "format");
+    st->format = PyObject_GetAttrString(builtins, "format");
     Py_DECREF(builtins);
-    if (!format) {
+    if (st->format == NULL) {
         Py_DECREF(&SortedDictType);
         Py_DECREF(m);
         return NULL;
     }
 
-    formatf = PyUnicode_FromString("f");
-    if (!formatf) {
-        Py_DECREF(format);
+    st->formatf = PyUnicode_FromString("f");
+    if (st->formatf == NULL) {
+        Py_DECREF(st->format);
         Py_DECREF(&SortedDictType);
         Py_DECREF(m);
         return NULL;
     }
 
     return m;
+}
+
+
+static int order_book_traverse(PyObject *m, visitproc visit, void *arg)
+{
+    OrderBookModuleState* st = get_order_book_state(m);
+    Py_VISIT(st->format);
+    Py_VISIT(st->formatf);
+    return 0;
+}
+
+
+static int order_book_clear(PyObject* m)
+{
+    OrderBookModuleState* st = get_order_book_state(m);
+    Py_CLEAR(st->format);
+    Py_CLEAR(st->formatf);
+    return 0;
+}
+
+
+static void order_book_free(PyObject *m)
+{
+    order_book_clear(m);
+}
+
+
+static OrderBookModuleState* get_order_book_state(PyObject *m)
+{
+    if (m == NULL) {
+        return (OrderBookModuleState*) PyModule_GetState(PyState_FindModule(&orderbookmodule));
+    } else {
+        return (OrderBookModuleState*) PyModule_GetState(m);
+    }
 }
 
 
@@ -463,7 +497,9 @@ static int floatstr_string_builder(PyObject *pydata, uint8_t *data, int *pos)
 
 static int formatf_string_builder(PyObject *pydata, uint8_t *data, int *pos)
 {
-    PyObject* repr = PyObject_CallFunctionObjArgs(format, pydata, formatf, NULL);
+    OrderBookModuleState* st = get_order_book_state(NULL);
+
+    PyObject* repr = PyObject_CallFunctionObjArgs(st->format, pydata, st->formatf, NULL);
     if (EXPECT(!repr, 0)) {
         return -1;
     }

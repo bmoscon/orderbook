@@ -98,13 +98,30 @@ static PyTypeObject OrderbookType = {
     .tp_dictoffset = 0,
 };
 
+// the module contains reusable python objects referring to the builtin format 
+// function and a fixed string 'f'
+typedef struct {
+    PyObject *format;
+    PyObject *formatf;
+} OrderBookModuleState;
+
+static int order_book_traverse(PyObject *m, visitproc visit, void *arg);
+static int order_book_clear(PyObject* m);
+static void order_book_free(PyObject *m);
+static OrderBookModuleState* get_order_book_state(PyObject *m);
+
 
 // Module specific definitions and initilization
 static PyModuleDef orderbookmodule = {
     PyModuleDef_HEAD_INIT,
     .m_name = "order_book",
     .m_doc = "Orderbook data structure",
-    .m_size = -1,
+    .m_size = sizeof(OrderBookModuleState),
+    .m_methods = NULL,
+    .m_slots = NULL,
+    .m_traverse = order_book_traverse,
+    .m_clear = order_book_clear,
+    .m_free = order_book_free,
 };
 
 
