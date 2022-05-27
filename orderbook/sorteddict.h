@@ -44,7 +44,7 @@ PyObject* SortedDict_index(SortedDict *self, PyObject *index);
 PyObject* SortedDict_todict(SortedDict *self, PyObject *unused, PyObject *kwargs);
 PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored));
 
-Py_ssize_t SortedDict_len(SortedDict *self);
+Py_ssize_t SortedDict_len(const SortedDict *self);
 PyObject *SortedDict_getitem(SortedDict *self, PyObject *key);
 int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value);
 

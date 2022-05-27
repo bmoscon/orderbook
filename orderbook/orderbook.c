@@ -7,6 +7,8 @@ associated with this software.
 #include "orderbook.h"
 #include "utils.h"
 
+typedef int (*string_builder_t)(PyObject *pydata, uint8_t *data, int *pos);
+
 
 void Orderbook_dealloc(Orderbook *self)
 {
@@ -177,7 +179,7 @@ PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored)
 /* Orderbook Mapping Functions */
 Py_ssize_t Orderbook_len(const Orderbook *self)
 {
-	return SortedDict_len(self->bids) + SortedDict_len(self->asks);
+    return SortedDict_len(self->bids) + SortedDict_len(self->asks);
 }
 
 
@@ -268,6 +270,8 @@ int Orderbook_setattr(const PyObject *self, PyObject *attr, PyObject *value)
 PyMODINIT_FUNC PyInit_order_book(void)
 {
     PyObject *m;
+    OrderBookModuleState *st;
+
     if (PyType_Ready(&OrderbookType) < 0 || PyType_Ready(&SortedDictType) < 0)
         return NULL;
 
@@ -289,7 +293,66 @@ PyMODINIT_FUNC PyInit_order_book(void)
         return NULL;
     }
 
+    st = get_order_book_state(m);
+
+    PyObject* builtins = PyImport_AddModule("builtins");
+    if (builtins == NULL) {
+        Py_DECREF(&SortedDictType);
+        Py_DECREF(m);
+        return NULL;
+    }
+
+    st->format = PyObject_GetAttrString(builtins, "format");
+    Py_DECREF(builtins);
+    if (st->format == NULL) {
+        Py_DECREF(&SortedDictType);
+        Py_DECREF(m);
+        return NULL;
+    }
+
+    st->formatf = PyUnicode_FromString("f");
+    if (st->formatf == NULL) {
+        Py_DECREF(st->format);
+        Py_DECREF(&SortedDictType);
+        Py_DECREF(m);
+        return NULL;
+    }
+
     return m;
+}
+
+
+static int order_book_traverse(PyObject *m, visitproc visit, void *arg)
+{
+    OrderBookModuleState* st = get_order_book_state(m);
+    Py_VISIT(st->format);
+    Py_VISIT(st->formatf);
+    return 0;
+}
+
+
+static int order_book_clear(PyObject* m)
+{
+    OrderBookModuleState* st = get_order_book_state(m);
+    Py_CLEAR(st->format);
+    Py_CLEAR(st->formatf);
+    return 0;
+}
+
+
+static void order_book_free(PyObject *m)
+{
+    order_book_clear(m);
+}
+
+
+static OrderBookModuleState* get_order_book_state(PyObject *m)
+{
+    if (m == NULL) {
+        return (OrderBookModuleState*) PyModule_GetState(PyState_FindModule(&orderbookmodule));
+    } else {
+        return (OrderBookModuleState*) PyModule_GetState(m);
+    }
 }
 
 
@@ -316,6 +379,9 @@ static int kraken_string_builder(PyObject *pydata, uint8_t *data, int *pos)
     bool leading_zero = true;
     while (*string) {
         if (*string != '.') {
+            if (*string == 'E' || *string == 'e') {
+                break;
+            }
             if (*string != '0' && leading_zero) {
                 leading_zero = false;
             }
@@ -336,7 +402,12 @@ static int kraken_string_builder(PyObject *pydata, uint8_t *data, int *pos)
 
 static int kraken_populate_side(const SortedDict *side, uint8_t *data, int *pos)
 {
-    for(int i = 0; i < 10; ++i) { // 10 is the kraken defined number of price/size pairs to use from each side
+    uint32_t size = SortedDict_len(side);
+    if (size > 10) { // 10 is the kraken defined number of price/size pairs to use from each side
+        size = 10;
+    }
+
+    for(uint32_t i = 0; i < size; ++i) {
         PyObject *price = PyTuple_GET_ITEM(side->keys, i);
         PyObject *size = PyDict_GetItem(side->data, price);
 
@@ -356,15 +427,7 @@ static int kraken_populate_side(const SortedDict *side, uint8_t *data, int *pos)
 static PyObject* kraken_checksum(const Orderbook *ob)
 {
     if (EXPECT(ob->max_depth && ob->max_depth < 10, 0)) {
-        PyErr_SetString(PyExc_ValueError, "Max depth is less than minimum number of levels for Kraken checksum");
-        return NULL;
-    }
-
-    uint32_t bids_size = SortedDict_len(ob->bids);
-    uint32_t asks_size = SortedDict_len(ob->asks);
-
-    if (EXPECT(bids_size < 10 || asks_size < 10, 0)) {
-        PyErr_SetString(PyExc_ValueError, "Depth is less than minimum number of levels for Kraken checksum");
+        PyErr_SetString(PyExc_ValueError, "Max depth is less than usual number of levels for Kraken checksum");
         return NULL;
     }
 
@@ -378,11 +441,14 @@ static PyObject* kraken_checksum(const Orderbook *ob)
     }
 
     unsigned long ret = crc32_table(ob->checksum_buffer, pos);
+
     return PyLong_FromUnsignedLong(ret);
 }
 
 
-static int ftx_string_builder(PyObject *pydata, uint8_t *data, int *pos)
+
+
+static int str_string_builder(PyObject *pydata, uint8_t *data, int *pos)
 {
     PyObject *repr = PyObject_Str(pydata);
     if (EXPECT(!repr, 0)) {
@@ -404,14 +470,100 @@ static int ftx_string_builder(PyObject *pydata, uint8_t *data, int *pos)
     int len = strlen(string);
     memcpy(&data[*pos], string, len);
     *pos += len;
-    data[(*pos)++] = ':';
 
     Py_DECREF(str);
 
     return 0;
 }
 
-static PyObject* ftx_checksum(const Orderbook *ob, const uint32_t depth)
+
+static int floatstr_string_builder(PyObject *pydata, uint8_t *data, int *pos)
+{
+    PyObject *repr = PyObject_Str(pydata);
+    if (EXPECT(!repr, 0)) {
+        return -1;
+    }
+
+    PyObject *flt = PyFloat_FromString(repr);
+    if (EXPECT(str_string_builder(flt, data, pos), 0)) {
+        Py_DECREF(flt);
+        return -1;
+    }
+
+    Py_DECREF(flt);
+    return 0;
+}
+
+
+static int formatf_string_builder(PyObject *pydata, uint8_t *data, int *pos)
+{
+    OrderBookModuleState* st = get_order_book_state(NULL);
+
+    PyObject* repr = PyObject_CallFunctionObjArgs(st->format, pydata, st->formatf, NULL);
+    if (EXPECT(!repr, 0)) {
+        return -1;
+    }
+
+    PyObject* str = PyUnicode_AsEncodedString(repr, "UTF-8", "strict");
+    Py_DECREF(repr);
+    if (EXPECT(!str, 0)) {
+        return -1;
+    }
+
+    const char *string = PyBytes_AS_STRING(str);
+    if (EXPECT(!string, 0)) {
+        Py_DECREF(str);
+        return -1;
+    }
+
+    int len = strlen(string);
+    memcpy(&data[*pos], string, len);
+    *pos += len;
+
+    Py_DECREF(str);
+    return 0;
+}
+
+
+static int okx_string_builder(PyObject *pydata, uint8_t *data, int *pos)
+{
+    int startpos = *pos;
+    if (EXPECT(str_string_builder(pydata, data, pos), 0)) {
+        return -1;
+    }
+
+    // default 'str' formatting is wrong when the value is in scientific notation
+    if (EXPECT(memchr(&data[startpos], (char) 'E', *pos - startpos), 0)) {
+        *pos = startpos;
+        if (EXPECT(formatf_string_builder(pydata, data, pos), 0)) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+
+static int ftx_string_builder(PyObject *pydata, uint8_t *data, int *pos)
+{
+    int startpos = *pos;
+    if (EXPECT(str_string_builder(pydata, data, pos), 0)) {
+        return -1;
+    }
+
+    // default 'str' formatting is wrong when the value is less than 0.0001 or in scientific notation
+    if (EXPECT(!strncmp(&data[startpos], "0.0000", 6) || memchr(&data[startpos], (char) 'E', *pos - startpos), 0)) {
+        *pos = startpos;
+        if (EXPECT(floatstr_string_builder(pydata, data, pos), 0)) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+
+static PyObject* alternating_checksum(const Orderbook *ob, const uint32_t depth, char separator, string_builder_t string_builder)
 {
     if (EXPECT(ob->max_depth && ob->max_depth < depth, 0)) {
         PyErr_SetString(PyExc_ValueError, "Max depth is less than minimum number of levels for checksum");
@@ -424,31 +576,35 @@ static PyObject* ftx_checksum(const Orderbook *ob, const uint32_t depth)
     PyObject *price = NULL;
     PyObject *size = NULL;
 
-    for(uint32_t i = 0; i < depth; ++i) { // 100 is the FTX defined number of price/size pairs to use from each side, 25 is OKX/OKCOIN
+    for(uint32_t i = 0; i < depth; ++i) { 
         if (i < bids_size) {
             price = PyTuple_GET_ITEM(ob->bids->keys, i);
             size = PyDict_GetItem(ob->bids->data, price);
 
-            if (EXPECT(ftx_string_builder(price, ob->checksum_buffer, &pos), 0)) {
+            if (EXPECT(string_builder(price, ob->checksum_buffer, &pos), 0)) {
                 return NULL;
             }
+            ob->checksum_buffer[pos++] = separator;
 
-            if (EXPECT(ftx_string_builder(size, ob->checksum_buffer, &pos), 0)) {
+            if (EXPECT(string_builder(size, ob->checksum_buffer, &pos), 0)) {
                 return NULL;
             }
+            ob->checksum_buffer[pos++] = separator;
         }
 
         if (i < asks_size) {
             price = PyTuple_GET_ITEM(ob->asks->keys, i);
             size = PyDict_GetItem(ob->asks->data, price);
 
-            if (EXPECT(ftx_string_builder(price, ob->checksum_buffer, &pos), 0)) {
+            if (EXPECT(string_builder(price, ob->checksum_buffer, &pos), 0)) {
                 return NULL;
             }
+            ob->checksum_buffer[pos++] = separator;
 
-            if (EXPECT(ftx_string_builder(size, ob->checksum_buffer, &pos), 0)) {
+            if (EXPECT(string_builder(size, ob->checksum_buffer, &pos), 0)) {
                 return NULL;
             }
+            ob->checksum_buffer[pos++] = separator;
         }
     }
 
@@ -464,11 +620,11 @@ static PyObject* calculate_checksum(const Orderbook *ob)
         case KRAKEN:
             return kraken_checksum(ob);
         case FTX:
-            return ftx_checksum(ob, 100);
+            return alternating_checksum(ob, 100, ':', ftx_string_builder);
         case OKX:
-            return ftx_checksum(ob, 25);
+            return alternating_checksum(ob, 25, ':', okx_string_builder);
         case BITGET:
-            return ftx_checksum(ob, 25);
+            return alternating_checksum(ob, 25, ':', str_string_builder);
         default:
             return NULL;
     }

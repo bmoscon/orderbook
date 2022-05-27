@@ -379,7 +379,7 @@ PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored))
 
 
 /* Sorted Dictionary Mapping Functions */
-Py_ssize_t SortedDict_len(SortedDict *self)
+Py_ssize_t SortedDict_len(const SortedDict *self)
 {
 	int len = PyDict_Size(self->data);
     if (self->depth && self->depth < len) {
