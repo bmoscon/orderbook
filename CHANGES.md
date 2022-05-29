@@ -1,6 +1,6 @@
 ## Changelog
 
-### 0.4.3
+### 0.4.3 (2022-05-29)
  * Bugfix: handle scientific notation of small values in Kraken checksum
  * Update: calculate Kraken checksum on order books less than 10 levels deep
  * Bugfix: fix occasional incorrect checksums for OKX, FTX and Bitget
