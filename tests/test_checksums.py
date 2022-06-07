@@ -158,6 +158,9 @@ def test_kraken_checksum():
 
     assert ob.checksum() == 1611253991
 
+    ob = OrderBook(checksum_format='KRAKEN')
+    assert ob.checksum() == 0
+
 
 def test_okx_checksum():
     ob = OrderBook(checksum_format='OKX')
@@ -246,6 +249,9 @@ def test_okx_checksum():
 
     assert ob.checksum() == 2399502091
 
+    ob = OrderBook(checksum_format='OKX')
+    assert ob.checksum() == 0
+
 
 def test_bitget_checksum():
     ob = OrderBook(checksum_format='BITGET')
@@ -323,6 +329,9 @@ def test_bitget_checksum():
         ob.bids[Decimal(b[0])] = Decimal(b[1])
 
     assert ob.checksum() == 3720106698
+
+    ob = OrderBook(checksum_format='BITGET')
+    assert ob.checksum() == 0
 
 
 def test_okcoin_checksum():
@@ -540,4 +549,7 @@ def test_ftx_checksum():
         ob.bids[Decimal(b[0])] = Decimal(b[1])
 
     assert ob.checksum() == 3169411573
+
+    ob = OrderBook(checksum_format='FTX')
+    assert ob.checksum() == 0
 

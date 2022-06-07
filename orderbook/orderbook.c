@@ -485,6 +485,13 @@ static int floatstr_string_builder(PyObject *pydata, uint8_t *data, int *pos)
     }
 
     PyObject *flt = PyFloat_FromString(repr);
+    if (EXPECT(!flt, 0)) {
+        Py_DECREF(repr);
+        return -1;
+    }
+
+    Py_DECREF(repr);
+
     if (EXPECT(str_string_builder(flt, data, pos), 0)) {
         Py_DECREF(flt);
         return -1;
@@ -608,7 +615,9 @@ static PyObject* alternating_checksum(const Orderbook *ob, const uint32_t depth,
         }
     }
 
-    unsigned long ret = crc32_table(ob->checksum_buffer, pos-1);
+    int len = (pos > 0) ? pos - 1 : 0;
+
+    unsigned long ret = crc32_table(ob->checksum_buffer, len);
 
     return PyLong_FromUnsignedLong(ret);
 }
