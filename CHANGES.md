@@ -1,5 +1,9 @@
 ## Changelog
 
+### 0.5.0
+ * Bugfix: fix segmentation fault when calculating checksum on empty orderbook
+ * Bugfix: fix missing reference decrement
+
 ### 0.4.3 (2022-05-29)
  * Bugfix: handle scientific notation of small values in Kraken checksum
  * Update: calculate Kraken checksum on order books less than 10 levels deep
