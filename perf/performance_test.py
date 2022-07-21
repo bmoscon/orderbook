@@ -129,6 +129,18 @@ def random_data_test(size):
             a = c_dictionary.index(idx)
 
     @profile
+    def access_top10_c_tolist(c_dictionary):
+        a = c_dictionary.to_list(10)
+
+    @profile
+    def access_top10_c_todict(c_dictionary):
+        d = c_dictionary.to_dict()
+        for idx, key in enumerate(d):
+            a = d[key]
+            if idx >= 10:
+                break
+
+    @profile
     def access_top10_iter(dictionary):
         for idx, key in enumerate(dictionary):
             a = dictionary[key]
@@ -140,8 +152,14 @@ def random_data_test(size):
     print(f"- index impl ", end="")
     access_top10_c_index(asc)
     
+    print(f"- todict impl ", end="")
+    access_top10_c_todict(asc)
+
     print(f"- iter impl (incorrect when called multiple times) ", end="")
     access_top10_iter(asc)
+
+    print(f"- tolist impl ", end="")
+    access_top10_c_tolist(asc)
     
     print(f"Orderbook SortedDict Python lib with {size} entries (access)")
     access_top10_iter(python_sd)
