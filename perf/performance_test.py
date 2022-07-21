@@ -129,6 +129,13 @@ def random_data_test(size):
             a = c_dictionary.index(idx)
 
     @profile
+    def access_top10_c_keys(c_dictionary):
+        for idx, key in enumerate(c_dictionary.keys()):
+            if idx >= 10:
+                break
+            a = c_dictionary[key]
+
+    @profile
     def access_top10_c_tolist(c_dictionary):
         a = c_dictionary.to_list(10)
 
@@ -154,6 +161,9 @@ def random_data_test(size):
     
     print(f"- todict impl ", end="")
     access_top10_c_todict(asc)
+
+    print(f"- keys impl ", end="")
+    access_top10_c_keys(asc)
 
     print(f"- iter impl (incorrect when called multiple times) ", end="")
     access_top10_iter(asc)
