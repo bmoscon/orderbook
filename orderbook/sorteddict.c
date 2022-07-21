@@ -339,6 +339,60 @@ PyObject* SortedDict_todict(SortedDict *self, PyObject *unused, PyObject *kwargs
 }
 
 
+PyObject* SortedDict_tolist(SortedDict *self, PyObject *n_levels_inp)
+{
+    long n_levels = PyLong_AsLong(n_levels_inp);
+    long data_len = (long) PyDict_Size(self->data);
+    // Set n_levels to self->depth if n_levels is negative (default)
+    if (n_levels == -1 | n_levels > data_len) {
+        n_levels = data_len;
+    }
+
+    if (EXPECT(PyErr_Occurred() != NULL, 0)) {
+        return NULL;
+    }
+
+    if (EXPECT(update_keys(self), 0)) {
+        return NULL;
+    }
+
+    PyObject *ret = PyList_New(n_levels);
+    if (EXPECT(!ret, 0)) {
+        return NULL;
+    }
+
+    for (int i = 0; i < n_levels; ++i) {
+        // new reference
+        PyObject *key = PySequence_GetItem(self->keys, i);
+        if (EXPECT(!key, 0)) {
+            return NULL;
+        }
+
+        // borrowed reference
+        PyObject *value = PyDict_GetItem(self->data, key);
+        if (EXPECT(!value, 0)) {
+            Py_DECREF(key);
+            return value;
+        }
+
+        // Build tuple of (i.e., key, value)
+        PyObject *tuple_entry = PyTuple_New(2);
+        if (EXPECT(!tuple_entry, 0)) {
+            Py_DECREF(key);
+            return NULL;
+        }
+        PyTuple_SET_ITEM(tuple_entry, 0, key);
+        Py_INCREF(value);
+        PyTuple_SET_ITEM(tuple_entry, 1, value);
+
+        // Add tuple to list
+        PyList_SET_ITEM(ret, i, tuple_entry);
+    }
+    
+    return ret;
+}
+
+
 PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored))
 {
     if (self->depth) {

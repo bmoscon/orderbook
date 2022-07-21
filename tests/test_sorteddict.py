@@ -140,6 +140,81 @@ def test_to_dict():
             d[key] < previous
         previous = d[key]
 
+def test_to_list():
+    random.seed()
+    values = []
+    asc = SortedDict(ordering='ASC')
+    desc = SortedDict(ordering='DESC')
+
+    for _ in range(2000):
+        values.append(random.uniform(0.0, 100000.0))
+    values = set(values)
+
+    for v in values:
+        asc[v] = str(v)
+        desc[v] = str(v)
+
+    lst = asc.to_list(-1)
+    _keys = list(list(zip(*lst))[0])
+    assert _keys == list(asc.keys())
+    assert sorted(_keys) == _keys
+    previous = None
+    for key, val in lst:
+        assert val == asc[key]
+        val = float(val)
+        if previous:
+            assert val > previous
+        previous = val
+
+    lst = desc.to_list(-1)
+    _keys = list(list(zip(*lst))[0])
+    assert _keys == list(desc.keys())
+    assert list(reversed(sorted(_keys))) == _keys
+    previous = None
+    for key, val in lst:
+        assert val == desc[key]
+        val = float(val)
+        if previous:
+            assert val < previous
+        previous = val
+
+def test_to_list_specified_length():
+    random.seed()
+    values = []
+    asc = SortedDict(ordering='ASC')
+    desc = SortedDict(ordering='DESC')
+
+    for _ in range(2000):
+        values.append(random.uniform(0.0, 100000.0))
+    values = set(values)
+
+    for v in values:
+        asc[v] = str(v)
+        desc[v] = str(v)
+
+    lst = asc.to_list(20)
+    _keys = list(list(zip(*lst))[0])
+    assert _keys == list(asc.keys())[:20]
+    assert sorted(_keys) == _keys
+    previous = None
+    for key, val in lst:
+        assert val == asc[key]
+        val = float(val)
+        if previous:
+            assert val > previous
+        previous = val
+
+    lst = desc.to_list(20)
+    _keys = list(list(zip(*lst))[0])
+    assert _keys == list(desc.keys())[:20]
+    assert list(reversed(sorted(_keys))) == _keys
+    previous = None
+    for key, val in lst:
+        assert val == desc[key]
+        val = float(val)
+        if previous:
+            assert val < previous
+        previous = val
 
 def test_init_from_dict():
     with pytest.raises(TypeError):
