@@ -339,11 +339,17 @@ PyObject* SortedDict_todict(SortedDict *self, PyObject *unused, PyObject *kwargs
 }
 
 
-PyObject* SortedDict_tolist(SortedDict *self, PyObject *n_levels_inp)
+PyObject* SortedDict_tolist(SortedDict *self, PyObject *args, PyObject *kwargs)
 {
-    long n_levels = PyLong_AsLong(n_levels_inp);
-    long data_len = (long) PyDict_Size(self->data);
-    // Set n_levels to self->depth if n_levels is negative (default)
+    static char* keywords[] = {"n_levels", NULL};
+    
+    int n_levels = -1;
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|i", keywords, &n_levels)) {
+        return NULL;
+    }
+
+    int data_len = PyDict_Size(self->data);
+    // Set n_levels to data_len if n_levels is the default value
     if (n_levels == -1 | n_levels > data_len) {
         n_levels = data_len;
     }

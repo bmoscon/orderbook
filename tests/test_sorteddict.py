@@ -154,7 +154,7 @@ def test_to_list():
         asc[v] = str(v)
         desc[v] = str(v)
 
-    lst = asc.to_list(-1)
+    lst = asc.to_list()
     _keys = list(list(zip(*lst))[0])
     assert _keys == list(asc.keys())
     assert sorted(_keys) == _keys
@@ -166,7 +166,7 @@ def test_to_list():
             assert val > previous
         previous = val
 
-    lst = desc.to_list(-1)
+    lst = desc.to_list()
     _keys = list(list(zip(*lst))[0])
     assert _keys == list(desc.keys())
     assert list(reversed(sorted(_keys))) == _keys
