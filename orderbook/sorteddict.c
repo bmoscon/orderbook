@@ -406,9 +406,11 @@ PyObject *SortedDict_getitem(SortedDict *self, PyObject *key)
 
 int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
 {
-    self->dirty = true;
-
     if (value) {
+	if (EXPECT(PyDict_Contains(self->data, key) == 0, 0)) {
+            self->dirty = true;
+	}
+
         int ret = PyDict_SetItem(self->data, key, value);
 
         if (EXPECT(ret == -1, 0)) {
@@ -419,6 +421,7 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
 
         return ret;
     } else {
+        self->dirty = true;
         // setitem also called to for del (value will be null for deletes)
         return PyDict_DelItem(self->data, key);
     }
