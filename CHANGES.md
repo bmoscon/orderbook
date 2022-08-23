@@ -1,6 +1,6 @@
 ## Changelog
 
-### 0.5.0
+### 0.5.0 (2022-08-23)
  * Bugfix: fix segmentation fault when calculating checksum on empty orderbook
  * Bugfix: fix missing reference decrement
  * Performance: Improvement to marking dirty keys
