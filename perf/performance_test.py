@@ -25,7 +25,7 @@ def profile(f):
         startt = time.time()
         ret = f(*args, **kwargs)
         total_time = time.time() - startt
-        print("Time:", total_time)
+        print(f"Time: {total_time * 1000:.6f} ms")
         return ret
     return wrapper
 
@@ -85,6 +85,8 @@ def random_data_test(size):
             values.append(random.uniform(-100000.0, 100000.0))
         values = set(values)
 
+    print("===== Write Performance =====")
+
     @profile
     def test_ordered(dictionary):
         for v in values:
@@ -119,6 +121,62 @@ def random_data_test(size):
     test_ordered(python_sd)
     print(f"Python dict (non sorted) with {size} entries")
     test_unordered(raw_python)
+
+    print("===== Read Performance =====")
+    @profile
+    def access_top10_c_index(c_dictionary):
+        for idx in range(10):
+            a = c_dictionary.index(idx)
+
+    @profile
+    def access_top10_c_keys(c_dictionary):
+        for idx, key in enumerate(c_dictionary.keys()):
+            if idx >= 10:
+                break
+            a = c_dictionary[key]
+
+    @profile
+    def access_top10_c_tolist(c_dictionary):
+        a = c_dictionary.to_list(10)
+
+    @profile
+    def access_top10_c_todict(c_dictionary):
+        d = c_dictionary.to_dict()
+        for idx, key in enumerate(d):
+            a = d[key]
+            if idx >= 10:
+                break
+
+    @profile
+    def access_top10_iter(dictionary):
+        for idx, key in enumerate(dictionary):
+            a = dictionary[key]
+            if idx >= 10:
+                break
+
+    print(f"C lib with {size} entries (access)")
+    
+    print(f"- index impl ", end="")
+    access_top10_c_index(asc)
+    
+    print(f"- todict impl ", end="")
+    access_top10_c_todict(asc)
+
+    print(f"- keys impl ", end="")
+    access_top10_c_keys(asc)
+
+    print(f"- iter impl (incorrect when called multiple times) ", end="")
+    access_top10_iter(asc)
+
+    print(f"- tolist impl ", end="")
+    access_top10_c_tolist(asc)
+    
+    print(f"Orderbook SortedDict Python lib with {size} entries (access)")
+    access_top10_iter(python_sd)
+    
+    print(f"Python dict (non sorted) with {size} entries (access)")
+    access_top10_iter(raw_python)
+
 
 
 def random_data_performance():
