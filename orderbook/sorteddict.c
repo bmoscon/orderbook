@@ -494,6 +494,13 @@ int SortedDict_contains(const SortedDict *self, PyObject *value)
 }
 
 /* iterator methods */
+PyObject *SortedDict_getiter(SortedDict *self)
+{
+    Py_INCREF(self);
+    self->iterator_index = -1;
+    return self;
+}
+
 PyObject *SortedDict_next(SortedDict *self)
 {
     if (self->iterator_index == -1) {
