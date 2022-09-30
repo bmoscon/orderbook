@@ -51,6 +51,7 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value);
 
 int SortedDict_contains(const SortedDict *self, PyObject *value);
 
+PyObject *SortedDict_getiter(SortedDict *self);
 PyObject *SortedDict_next(SortedDict *self);
 
 
@@ -101,7 +102,7 @@ static PyTypeObject SortedDictType = {
     .tp_methods = SortedDict_methods,
     .tp_as_mapping = &SortedDict_mapping,
     .tp_as_sequence = &SortedDict_seq,
-    .tp_iter  = PyObject_SelfIter,
+    .tp_iter  = (getiterfunc) SortedDict_getiter,
     .tp_iternext = (iternextfunc) SortedDict_next,
     .tp_dictoffset = 0,
 };
