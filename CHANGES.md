@@ -3,6 +3,7 @@
 ### 0.6.0
  * Update: Drop support for python 3.7
  * Feature: to_list method
+ * Bugfix: Initialize iterator correctly
 
 ### 0.5.0 (2022-08-23)
  * Bugfix: fix segmentation fault when calculating checksum on empty orderbook
