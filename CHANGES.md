@@ -1,6 +1,6 @@
 ## Changelog
 
-### 0.6.0
+### 0.6.0 (2022-10-19)
  * Update: Drop support for python 3.7
  * Feature: to_list method
  * Bugfix: Initialize iterator correctly
