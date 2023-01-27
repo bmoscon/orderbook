@@ -62,6 +62,12 @@ for price in ob.asks:
 print("\n\nRaw asks dictionary")
 print(ob.asks.to_dict())
 
+
+# Data can also be exported as an ordered list
+# .to_list() returns a list of (price, size) tuples
+print(ob.asks.to_list()[:5])
+print(ob.bids.to_list()[:5])
+
 ```
 
 ### Main Features
