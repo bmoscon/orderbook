@@ -65,7 +65,9 @@ print(ob.asks.to_dict())
 
 # Data can also be exported as an ordered list
 # .to_list() returns a list of (price, size) tuples
+print("Top 5 Asks")
 print(ob.asks.to_list()[:5])
+print("\nTop 5 Bids")
 print(ob.bids.to_list()[:5])
 
 ```
