@@ -42,7 +42,7 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds);
 PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored));
 PyObject* SortedDict_index(SortedDict *self, PyObject *index);
 PyObject* SortedDict_todict(SortedDict *self, PyObject *unused, PyObject *kwargs);
-PyObject* SortedDict_tolist(SortedDict *self, PyObject *args, PyObject *kwargs);
+PyObject* SortedDict_tolist(SortedDict *self, PyObject *Py_UNUSED(ignored));
 PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored));
 
 Py_ssize_t SortedDict_len(const SortedDict *self);
@@ -70,7 +70,7 @@ static PyMethodDef SortedDict_methods[] = {
     {"index", (PyCFunction) SortedDict_index, METH_O, "return a key, value tuple at index N"},
     {"truncate", (PyCFunction) SortedDict_truncate, METH_NOARGS, "truncate to length max_depth"},
     {"to_dict", (PyCFunction) SortedDict_todict, METH_VARARGS | METH_KEYWORDS, "return a python dictionary, sorted by keys"},
-    {"to_list", (PyCFunction) SortedDict_tolist, METH_VARARGS | METH_KEYWORDS, "return a list of key, value tuple with length specified in input argument. if no argument is passed or the argument is larger than length of self->data, return items with length of self->data."},
+    {"to_list", (PyCFunction) SortedDict_tolist, METH_NOARGS, "return a list of key, value tuples."},
     {NULL}
 };
 

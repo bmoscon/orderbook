@@ -339,19 +339,12 @@ PyObject* SortedDict_todict(SortedDict *self, PyObject *unused, PyObject *kwargs
 }
 
 
-PyObject* SortedDict_tolist(SortedDict *self, PyObject *args, PyObject *kwargs)
+PyObject* SortedDict_tolist(SortedDict *self, PyObject *Py_UNUSED(ignored))
 {
-    static char* keywords[] = {"n_levels", NULL};
-    
-    int n_levels = -1;
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|i", keywords, &n_levels)) {
-        return NULL;
-    }
 
-    int data_len = PyDict_Size(self->data);
-    // Set n_levels to data_len if n_levels is the default value
-    if (n_levels == -1 | n_levels > data_len) {
-        n_levels = data_len;
+    int len = PyDict_Size(self->data);
+    if ((self->depth > 0) && (self->depth < len)) {
+        len = self->depth;
     }
 
     if (EXPECT(PyErr_Occurred() != NULL, 0)) {
@@ -362,12 +355,12 @@ PyObject* SortedDict_tolist(SortedDict *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    PyObject *ret = PyList_New(n_levels);
+    PyObject *ret = PyList_New(len);
     if (EXPECT(!ret, 0)) {
         return NULL;
     }
 
-    for (int i = 0; i < n_levels; ++i) {
+    for (int i = 0; i < len; ++i) {
         // new reference
         PyObject *key = PySequence_GetItem(self->keys, i);
         if (EXPECT(!key, 0)) {
