@@ -121,7 +121,7 @@ static PyModuleDef orderbookmodule = {
     .m_slots = NULL,
     .m_traverse = order_book_traverse,
     .m_clear = order_book_clear,
-    .m_free = order_book_free,
+    .m_free = (void *)order_book_free,
 };
 
 

@@ -540,7 +540,7 @@ static int okx_string_builder(PyObject *pydata, uint8_t *data, int *pos)
     }
 
     // default 'str' formatting is wrong when the value is in scientific notation
-    if (EXPECT(memchr(&data[startpos], (char) 'E', *pos - startpos), 0)) {
+    if (EXPECT((long)memchr(&data[startpos], (char) 'E', *pos - startpos), (long)0)) {
         *pos = startpos;
         if (EXPECT(formatf_string_builder(pydata, data, pos), 0)) {
             return -1;
