@@ -491,7 +491,7 @@ PyObject *SortedDict_getiter(SortedDict *self)
 {
     Py_INCREF(self);
     self->iterator_index = -1;
-    return self;
+    return (PyObject *)self;
 }
 
 PyObject *SortedDict_next(SortedDict *self)
