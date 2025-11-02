@@ -7,6 +7,8 @@ associated with this software.
 #ifndef __UTILS__
 #define __UTILS__
 
+#include "Python.h"
+
 #if defined(_WIN32)
 #define EXPECT(EXPR, VAL) (EXPR)
 #else
@@ -19,7 +21,7 @@ enum side_e {
     INVALID_SIDE
 };
 
-enum side_e check_key(const char *key);
+enum side_e check_key_pyobject(PyObject *key, PyObject *str_bid, PyObject *str_ask, PyObject *str_bids, PyObject *str_asks);
 
 
 static uint32_t crc_32_table[] = { /* CRC polynomial 0xEDB88320 */

@@ -8,17 +8,47 @@ associated with this software.
 #include <stdint.h>
 #include "utils.h"
 
-
-enum side_e check_key(const char *key)
+/*
+Optimized key checking using cached PyObject strings.
+Uses fast pointer comparison for cached strings, avoiding conversion overhead.
+*/
+inline enum side_e check_key_pyobject(PyObject *key, PyObject *str_bid, PyObject *str_ask, PyObject *str_bids, PyObject *str_asks)
 {
-    if (!strcmp(key, "bid") || !strcmp(key, "BID") || !strcmp(key, "bids") || !strcmp(key, "BIDS")) {
-        return BID;
+    if (!PyUnicode_Check(key)) {
+        return INVALID_SIDE;
     }
 
-    if (!strcmp(key, "ask") || !strcmp(key, "ASK") || !strcmp(key, "asks") || !strcmp(key, "ASKS")) {
+    // Fast path: pointer comparison for cached strings
+    if (key == str_bid || key == str_bids) {
+        return BID;
+    }
+    if (key == str_ask || key == str_asks) {
         return ASK;
     }
 
+    // Slow path: Unicode comparison for non cached strings
+    if (PyUnicode_Compare(key, str_bid) == 0 || PyUnicode_Compare(key, str_bids) == 0) {
+        return BID;
+    }
+    if (PyUnicode_Compare(key, str_ask) == 0 || PyUnicode_Compare(key, str_asks) == 0) {
+        return ASK;
+    }
+
+    // Also check uppercase variants (though less common in Python)
+    PyObject *lower = PyObject_CallMethod(key, "lower", NULL);
+    if (lower) {
+        enum side_e result = INVALID_SIDE;
+        if (PyUnicode_Compare(lower, str_bid) == 0 || PyUnicode_Compare(lower, str_bids) == 0) {
+            result = BID;
+        } else if (PyUnicode_Compare(lower, str_ask) == 0 || PyUnicode_Compare(lower, str_asks) == 0) {
+            result = ASK;
+        }
+        Py_DECREF(lower);
+        return result;
+    }
+
+    // If lower() fails, clear the error and return invalid
+    PyErr_Clear();
     return INVALID_SIDE;
 }
 

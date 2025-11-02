@@ -61,39 +61,20 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
     }
 
 
+    // Lazy allocation: Store checksum format but don't allocate buffer until needed
     if (checksum_str.buf && checksum_str.len) {
         if (strncmp(checksum_str.buf, "KRAKEN", checksum_str.len) == 0) {
             self->checksum = KRAKEN;
-            self->checksum_buffer = calloc(2048, sizeof(uint8_t));
             self->checksum_len = 2048;
-            if (!self->checksum_buffer) {
-                PyErr_SetNone(PyExc_MemoryError);
-                return -1;
-            }
         } else if ((checksum_str.len > 2) && (strncmp(checksum_str.buf, "FTX", 3) == 0)) {
             self->checksum = FTX;
-            self->checksum_buffer = calloc(20480, sizeof(uint8_t));
             self->checksum_len = 20480;
-            if (!self->checksum_buffer) {
-                PyErr_SetNone(PyExc_MemoryError);
-                return -1;
-            }
         } else if ((checksum_str.len > 2) && ((strncmp(checksum_str.buf, "OKX", 3) == 0) || (strncmp(checksum_str.buf, "OKCO", 4) == 0))) {
             self->checksum = OKX;
-            self->checksum_buffer = calloc(4096, sizeof(uint8_t));
             self->checksum_len = 4096;
-            if (!self->checksum_buffer) {
-                PyErr_SetNone(PyExc_MemoryError);
-                return -1;
-            }
         } else if (strncmp(checksum_str.buf, "BITGET", checksum_str.len) == 0) {
             self->checksum = BITGET;
-            self->checksum_buffer = calloc(4096, sizeof(uint8_t));
             self->checksum_len = 4096;
-            if (!self->checksum_buffer) {
-                PyErr_SetNone(PyExc_MemoryError);
-                return -1;
-            }
         } else {
             PyBuffer_Release(&checksum_str);
             PyErr_SetString(PyExc_TypeError, "invalid checksum format specified");
@@ -162,6 +143,17 @@ PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored)
         return NULL;
     }
 
+    // Lazy allocation: allocate buffer on first use
+    // Cast away const since we're doing lazy initialization
+    Orderbook *mutable_self = (Orderbook *)self;
+    if (!mutable_self->checksum_buffer) {
+        mutable_self->checksum_buffer = calloc(mutable_self->checksum_len, sizeof(uint8_t));
+        if (!mutable_self->checksum_buffer) {
+            PyErr_SetNone(PyExc_MemoryError);
+            return NULL;
+        }
+    }
+
     if (EXPECT(update_keys(self->bids), 0)) {
         return NULL;
     }
@@ -190,13 +182,9 @@ PyObject *Orderbook_getitem(const Orderbook *self, PyObject *key)
         return NULL;
     }
 
-    PyObject *str = PyUnicode_AsEncodedString(key, "UTF-8", "strict");
-    if (EXPECT(!str, 0)) {
-        return NULL;
-    }
-
-    enum side_e key_int = check_key(PyBytes_AsString(str));
-    Py_DECREF(str);
+    // Use optimized key checking with cached strings
+    OrderBookModuleState* st = get_order_book_state(NULL);
+    enum side_e key_int = check_key_pyobject(key, st->str_bid, st->str_ask, st->str_bids, st->str_asks);
 
     if (key_int == BID) {
         Py_INCREF(self->bids);
@@ -219,13 +207,9 @@ int Orderbook_setitem(const Orderbook *self, PyObject *key, PyObject *value)
         return -1;
     }
 
-    PyObject *str = PyUnicode_AsEncodedString(key, "UTF-8", "strict");
-    if (EXPECT(!str, 0)) {
-        return -1;
-    }
-
-    enum side_e key_int = check_key(PyBytes_AsString(str));
-    Py_DECREF(str);
+    // Use optimized key checking with cached strings
+    OrderBookModuleState* st = get_order_book_state(NULL);
+    enum side_e key_int = check_key_pyobject(key, st->str_bid, st->str_ask, st->str_bids, st->str_asks);
 
     if (EXPECT(key_int == INVALID_SIDE, 0)) {
         PyErr_SetString(PyExc_ValueError, "key must one of bid/ask");
@@ -288,6 +272,7 @@ PyMODINIT_FUNC PyInit_order_book(void)
 
     Py_INCREF(&SortedDictType);
     if (PyModule_AddObject(m, "SortedDict", (PyObject *) &SortedDictType) < 0) {
+        Py_DECREF(&OrderbookType);
         Py_DECREF(&SortedDictType);
         Py_DECREF(m);
         return NULL;
@@ -297,6 +282,7 @@ PyMODINIT_FUNC PyInit_order_book(void)
 
     PyObject* builtins = PyImport_AddModule("builtins");
     if (builtins == NULL) {
+        Py_DECREF(&OrderbookType);
         Py_DECREF(&SortedDictType);
         Py_DECREF(m);
         return NULL;
@@ -305,6 +291,7 @@ PyMODINIT_FUNC PyInit_order_book(void)
     st->format = PyObject_GetAttrString(builtins, "format");
     Py_DECREF(builtins);
     if (st->format == NULL) {
+        Py_DECREF(&OrderbookType);
         Py_DECREF(&SortedDictType);
         Py_DECREF(m);
         return NULL;
@@ -313,6 +300,26 @@ PyMODINIT_FUNC PyInit_order_book(void)
     st->formatf = PyUnicode_FromString("f");
     if (st->formatf == NULL) {
         Py_DECREF(st->format);
+        Py_DECREF(&OrderbookType);
+        Py_DECREF(&SortedDictType);
+        Py_DECREF(m);
+        return NULL;
+    }
+
+    // Initialize cached interned strings for fast key comparison
+    st->str_bid = PyUnicode_InternFromString("bid");
+    st->str_ask = PyUnicode_InternFromString("ask");
+    st->str_bids = PyUnicode_InternFromString("bids");
+    st->str_asks = PyUnicode_InternFromString("asks");
+
+    if (!st->str_bid || !st->str_ask || !st->str_bids || !st->str_asks) {
+        Py_XDECREF(st->str_bid);
+        Py_XDECREF(st->str_ask);
+        Py_XDECREF(st->str_bids);
+        Py_XDECREF(st->str_asks);
+        Py_DECREF(st->formatf);
+        Py_DECREF(st->format);
+        Py_DECREF(&OrderbookType);
         Py_DECREF(&SortedDictType);
         Py_DECREF(m);
         return NULL;
@@ -327,6 +334,10 @@ static int order_book_traverse(PyObject *m, visitproc visit, void *arg)
     OrderBookModuleState* st = get_order_book_state(m);
     Py_VISIT(st->format);
     Py_VISIT(st->formatf);
+    Py_VISIT(st->str_bid);
+    Py_VISIT(st->str_ask);
+    Py_VISIT(st->str_bids);
+    Py_VISIT(st->str_asks);
     return 0;
 }
 
@@ -336,6 +347,10 @@ static int order_book_clear(PyObject* m)
     OrderBookModuleState* st = get_order_book_state(m);
     Py_CLEAR(st->format);
     Py_CLEAR(st->formatf);
+    Py_CLEAR(st->str_bid);
+    Py_CLEAR(st->str_ask);
+    Py_CLEAR(st->str_bids);
+    Py_CLEAR(st->str_asks);
     return 0;
 }
 
@@ -583,7 +598,7 @@ static PyObject* alternating_checksum(const Orderbook *ob, const uint32_t depth,
     PyObject *price = NULL;
     PyObject *size = NULL;
 
-    for(uint32_t i = 0; i < depth; ++i) { 
+    for(uint32_t i = 0; i < depth; ++i) {
         if (i < bids_size) {
             price = PyTuple_GET_ITEM(ob->bids->keys, i);
             size = PyDict_GetItem(ob->bids->data, price);

@@ -69,6 +69,10 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
         }
 
         PyObject *copy = PyDict_Copy(dict);
+        if (!copy) {
+            return -1;
+        }
+
         if (self->data) {
             Py_DECREF(self->data);
         }
@@ -77,7 +81,13 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
 
 
     if (kwds && PyDict_Check(kwds) && PyDict_Size(kwds) > 0) {
-        if (PyDict_Contains(kwds, PyUnicode_FromString("max_depth"))) {
+        PyObject *max_depth_string = PyUnicode_FromString("max_depth");
+        if (!max_depth_string) {
+            return -1;
+        }
+
+        if (PyDict_Contains(kwds, max_depth_string)) {
+            Py_DECREF(max_depth_string);
             PyObject *max_depth = PyDict_GetItemString(kwds, "max_depth");
             if (PyLong_Check(max_depth)) {
                 self->depth = PyLong_AsLong(max_depth);
@@ -94,9 +104,17 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
                 PyErr_SetString(PyExc_ValueError, "max_depth must be an integer");
                 return -1;
             }
+        } else {
+            Py_DECREF(max_depth_string);
         }
 
-        if (PyDict_Contains(kwds, PyUnicode_FromString("truncate"))) {
+        PyObject *truncate_string = PyUnicode_FromString("truncate");
+        if (!truncate_string) {
+            return -1;
+        }
+
+        if (PyDict_Contains(kwds, truncate_string)) {
+            Py_DECREF(truncate_string);
             PyObject *truncate = PyDict_GetItemString(kwds, "truncate");
 
             if (PyBool_Check(truncate)) {
@@ -109,9 +127,17 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
                 PyErr_SetString(PyExc_ValueError, "truncate must be a boolean");
                 return -1;
             }
+        } else {
+            Py_DECREF(truncate_string);
         }
 
-        if (PyDict_Contains(kwds, PyUnicode_FromString("ordering"))) {
+        PyObject *ordering_string = PyUnicode_FromString("ordering");
+        if (!ordering_string) {
+            return -1;
+        }
+
+        if (PyDict_Contains(kwds, ordering_string)) {
+            Py_DECREF(ordering_string);
             ordering = PyDict_GetItemString(kwds, "ordering");
             if (!PyUnicode_Check(ordering)) {
                 PyErr_SetString(PyExc_ValueError, "ordering must be a string");
@@ -138,6 +164,7 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
             }
             Py_DECREF(str);
         } else {
+            Py_DECREF(ordering_string);
             // default is ascending
             self->ordering = ASCENDING;
         }
@@ -364,6 +391,7 @@ PyObject* SortedDict_tolist(SortedDict *self, PyObject *Py_UNUSED(ignored))
         // new reference
         PyObject *key = PySequence_GetItem(self->keys, i);
         if (EXPECT(!key, 0)) {
+            Py_DECREF(ret);
             return NULL;
         }
 
@@ -371,6 +399,7 @@ PyObject* SortedDict_tolist(SortedDict *self, PyObject *Py_UNUSED(ignored))
         PyObject *value = PyDict_GetItem(self->data, key);
         if (EXPECT(!value, 0)) {
             Py_DECREF(key);
+            Py_DECREF(ret);
             return value;
         }
 
@@ -378,6 +407,7 @@ PyObject* SortedDict_tolist(SortedDict *self, PyObject *Py_UNUSED(ignored))
         PyObject *tuple_entry = PyTuple_New(2);
         if (EXPECT(!tuple_entry, 0)) {
             Py_DECREF(key);
+            Py_DECREF(ret);
             return NULL;
         }
         PyTuple_SET_ITEM(tuple_entry, 0, key);
@@ -387,7 +417,7 @@ PyObject* SortedDict_tolist(SortedDict *self, PyObject *Py_UNUSED(ignored))
         // Add tuple to list
         PyList_SET_ITEM(ret, i, tuple_entry);
     }
-    
+
     return ret;
 }
 
@@ -410,6 +440,7 @@ PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored))
             return NULL;
         }
 
+        // Delete items beyond depth
         for (int i = 0; i < len; ++i) {
             if (EXPECT(PyDict_DelItem(self->data, PySequence_Fast_GET_ITEM(delete, i)) == -1, 0)) {
                 Py_DECREF(delete);
@@ -418,12 +449,17 @@ PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored))
         }
         Py_DECREF(delete);
 
+        // Optimization: Instead of marking dirty and re-sorting, just slice the keys tuple
+        // since we already have sorted keys and only removed items from the end
         if (len > 0) {
-            self->dirty = true;
-        }
-
-        if (EXPECT(update_keys(self), 0)) {
-            return NULL;
+            PyObject *new_keys = PySequence_GetSlice(self->keys, 0, self->depth);
+            if (EXPECT(!new_keys, 0)) {
+                return NULL;
+            }
+            Py_DECREF(self->keys);
+            self->keys = new_keys;
+            // Keys are still sorted, so don't mark dirty
+            self->dirty = false;
         }
     }
 
@@ -460,16 +496,27 @@ PyObject *SortedDict_getitem(SortedDict *self, PyObject *key)
 int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
 {
     if (value) {
-	if (EXPECT(PyDict_Contains(self->data, key) == 0, 0)) {
+        int key_exists = PyDict_Contains(self->data, key);
+        if (EXPECT(key_exists == -1, 0)) {
+            return -1;  // Error occurred
+        }
+
+        if (EXPECT(key_exists == 0, 0)) {
             self->dirty = true;
-	}
+        }
 
         int ret = PyDict_SetItem(self->data, key, value);
 
         if (EXPECT(ret == -1, 0)) {
             return ret;
-        } else if (EXPECT(self->truncate && !SortedDict_truncate(self, NULL), 0)) {
-            return -1;
+        }
+
+        // Optimization: Only truncate if dict size exceeds depth
+        // This avoids redundant truncate calls when updating existing keys
+        if (EXPECT(self->truncate && self->depth > 0 && PyDict_Size(self->data) > self->depth, 0)) {
+            if (!SortedDict_truncate(self, NULL)) {
+                return -1;
+            }
         }
 
         return ret;
@@ -483,7 +530,7 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
 /* Seq Functions */
 int SortedDict_contains(const SortedDict *self, PyObject *value)
 {
-    return PySequence_Contains(self->data, value);
+    return PyDict_Contains(self->data, value);
 }
 
 /* iterator methods */
@@ -504,6 +551,11 @@ PyObject *SortedDict_next(SortedDict *self)
         }
 
         Py_ssize_t size = PySequence_Fast_GET_SIZE(self->keys);
+        // Respect depth limit for consistency with keys(), to_dict(), etc.
+        if (self->depth > 0 && self->depth < size) {
+            size = self->depth;
+        }
+
         if (EXPECT(size == 0, 0)){
             return NULL;
         }
@@ -514,6 +566,11 @@ PyObject *SortedDict_next(SortedDict *self)
     } else {
         self->iterator_index++;
         Py_ssize_t size = PySequence_Fast_GET_SIZE(self->keys);
+        // Respect depth limit for consistency with keys(), to_dict(), etc.
+        if (self->depth > 0 && self->depth < size) {
+            size = self->depth;
+        }
+
         if (size <= self->iterator_index) {
             self->iterator_index = -1;
             return NULL;

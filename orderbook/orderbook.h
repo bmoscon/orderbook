@@ -98,11 +98,16 @@ static PyTypeObject OrderbookType = {
     .tp_dictoffset = 0,
 };
 
-// the module contains reusable python objects referring to the builtin format 
+// the module contains reusable python objects referring to the builtin format
 // function and a fixed string 'f'
 typedef struct {
     PyObject *format;
     PyObject *formatf;
+    // Cached strings for fast key comparison
+    PyObject *str_bid;
+    PyObject *str_ask;
+    PyObject *str_bids;
+    PyObject *str_asks;
 } OrderBookModuleState;
 
 static int order_book_traverse(PyObject *m, visitproc visit, void *arg);
