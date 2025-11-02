@@ -89,6 +89,9 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
         if (PyDict_Contains(kwds, max_depth_string)) {
             Py_DECREF(max_depth_string);
             PyObject *max_depth = PyDict_GetItemString(kwds, "max_depth");
+            if (!max_depth) {
+                return -1;
+            }
             if (PyLong_Check(max_depth)) {
                 self->depth = PyLong_AsLong(max_depth);
                 if (self->depth == -1 && PyErr_Occurred()) {
@@ -116,6 +119,9 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
         if (PyDict_Contains(kwds, truncate_string)) {
             Py_DECREF(truncate_string);
             PyObject *truncate = PyDict_GetItemString(kwds, "truncate");
+            if (!truncate) {
+                return -1;
+            }
 
             if (PyBool_Check(truncate)) {
                 if (PyObject_IsTrue(truncate)) {
@@ -139,6 +145,9 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
         if (PyDict_Contains(kwds, ordering_string)) {
             Py_DECREF(ordering_string);
             ordering = PyDict_GetItemString(kwds, "ordering");
+            if (!ordering) {
+                return -1;
+            }
             if (!PyUnicode_Check(ordering)) {
                 PyErr_SetString(PyExc_ValueError, "ordering must be a string");
                 return -1;
