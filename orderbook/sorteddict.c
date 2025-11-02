@@ -213,6 +213,13 @@ inline int update_keys(SortedDict *self) {
         }
     }
 
+    /*
+    It does seem like this code isnt necessarily needed.
+    the PyDict_Keys function above returns a PyListObject which
+    should suffice. It isnt strictly necessary to convert it to a tuple.
+    After more extensive testing, this will be cleaned up
+    should it prove to really be unnecessary.
+
     PyObject *ret = PySequence_Tuple(keys);
     Py_DECREF(keys);
     if (EXPECT(!ret, 0)) {
@@ -221,9 +228,9 @@ inline int update_keys(SortedDict *self) {
 
     if (self->keys) {
         Py_DECREF(self->keys);
-    }
-
-    self->keys = ret;
+    }*/
+    Py_CLEAR(self->keys);
+    self->keys = keys;
     self->dirty = false;
 
     return 0;
