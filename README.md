@@ -81,7 +81,7 @@ print(ob.bids.to_list()[:5])
 
 ### Installation
 
-The preferable way to install is via `pip` - `pip install order-book`. Installing from source will require a compiler and can be done with setuptools: `python setup.py install`. 
+The preferable way to install is via `pip` - `pip install order-book`. Installing from source will require a compiler and can be done with pip: `pip install .`. 
 
 
 ### Running code coverage
