@@ -549,3 +549,102 @@ PyObject *SortedDict_next(SortedDict *self)
         return ret;
     }
 }
+
+
+/* items iterator */
+static void SortedDictItemsIter_dealloc(SortedDictItemsIter *self)
+{
+    PyObject_GC_UnTrack(self);
+    Py_CLEAR(self->keys);
+    Py_CLEAR(self->data);
+    PyObject_GC_Del(self);
+}
+
+
+static int SortedDictItemsIter_traverse(SortedDictItemsIter *self, visitproc visit, void *arg)
+{
+    Py_VISIT(self->keys);
+    Py_VISIT(self->data);
+
+    return 0;
+}
+
+
+static int SortedDictItemsIter_clear(SortedDictItemsIter *self)
+{
+    Py_CLEAR(self->keys);
+    Py_CLEAR(self->data);
+
+    return 0;
+}
+
+
+static PyObject *SortedDictItemsIter_next(SortedDictItemsIter *self)
+{
+    if (self->index >= self->len) {
+        return NULL;
+    }
+
+    PyObject *key = PyTuple_GET_ITEM(self->keys, self->index);
+    PyObject *value = PyDict_GetItemWithError(self->data, key);
+    if (EXPECT(!value, 0)) {
+        if (!PyErr_Occurred()) {
+            // the level was deleted mid iteration so raise
+            PyErr_SetObject(PyExc_KeyError, key);
+        }
+        return NULL;
+    }
+
+    Py_INCREF(value);
+    PyObject *ret = PyTuple_New(2);
+    if (EXPECT(!ret, 0)) {
+        Py_DECREF(value);
+        return NULL;
+    }
+    PyTuple_SET_ITEM(ret, 0, Py_NewRef(key));
+    PyTuple_SET_ITEM(ret, 1, value);
+
+    self->index++;
+    return ret;
+}
+
+
+PyTypeObject SortedDictItemsIterType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "order_book.items_iterator",
+    .tp_doc = "iterator over the (key, value) pairs of a SortedDict",
+    .tp_basicsize = sizeof(SortedDictItemsIter),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_dealloc = (destructor) SortedDictItemsIter_dealloc,
+    .tp_traverse = (traverseproc) SortedDictItemsIter_traverse,
+    .tp_clear = (inquiry) SortedDictItemsIter_clear,
+    .tp_iter = PyObject_SelfIter,
+    .tp_iternext = (iternextfunc) SortedDictItemsIter_next,
+};
+
+
+PyObject* SortedDict_items(SortedDict *self, PyObject *Py_UNUSED(ignored))
+{
+    if (EXPECT(update_keys(self), 0)) {
+        return NULL;
+    }
+
+    SortedDictItemsIter *it = PyObject_GC_New(SortedDictItemsIter, &SortedDictItemsIterType);
+    if (EXPECT(!it, 0)) {
+        return NULL;
+    }
+
+    it->keys = Py_NewRef(self->keys);
+    it->data = Py_NewRef(self->data);
+    it->index = 0;
+
+    Py_ssize_t len = PyTuple_GET_SIZE(it->keys);
+    if ((self->depth > 0) && (self->depth < len)) {
+        len = self->depth;
+    }
+    it->len = len;
+
+    PyObject_GC_Track(it);
+    return (PyObject *)it;
+}

@@ -1,6 +1,7 @@
 ## Changelog
 
 ### 0.7.1
+ * Feature: issue #14 .items() iterator on book sides
  * Update: Add more unit tests to increase code coverage
  * Bugfix: reference / memory leaks
 

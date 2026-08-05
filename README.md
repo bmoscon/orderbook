@@ -97,6 +97,14 @@ print("\nTop 5 ask prices")
 print(ob.asks.keys()[:5])
 
 
+# .items() returns an iterator over price, size pairs
+print("\nTop 5 asks as (price, size) pairs")
+for count, (price, size) in enumerate(ob.asks.items()):
+    if count == 5:
+        break
+    print(f"Price: {price} Size: {size}")
+
+
 # The entire book can be exported at once. The keys are 'bid' and 'ask' (singular)
 book = ob.to_dict()
 print(f"\nto_dict() keys: {list(book)}")

@@ -34,6 +34,18 @@ typedef struct {
 } SortedDict;
 
 
+// side iterator
+typedef struct {
+    PyObject_HEAD
+    PyObject *keys;
+    PyObject *data;
+    Py_ssize_t index;
+    Py_ssize_t len;    // obeys max_depth
+} SortedDictItemsIter;
+
+extern PyTypeObject SortedDictItemsIterType;
+
+
 void SortedDict_dealloc(SortedDict *self);
 PyObject *SortedDict_new(PyTypeObject *type, PyObject *args, PyObject *kwds);
 int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds);
@@ -45,6 +57,7 @@ PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored));
 PyObject* SortedDict_index(SortedDict *self, PyObject *index);
 PyObject* SortedDict_todict(SortedDict *self, PyObject *unused, PyObject *kwargs);
 PyObject* SortedDict_tolist(SortedDict *self, PyObject *Py_UNUSED(ignored));
+PyObject* SortedDict_items(SortedDict *self, PyObject *Py_UNUSED(ignored));
 PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored));
 
 Py_ssize_t SortedDict_len(const SortedDict *self);
@@ -73,6 +86,7 @@ static PyMethodDef SortedDict_methods[] = {
     {"truncate", (PyCFunction) SortedDict_truncate, METH_NOARGS, "truncate to length max_depth"},
     {"to_dict", (PyCFunction) SortedDict_todict, METH_VARARGS | METH_KEYWORDS, "return a python dictionary, sorted by keys"},
     {"to_list", (PyCFunction) SortedDict_tolist, METH_NOARGS, "return a list of key, value tuples."},
+    {"items", (PyCFunction) SortedDict_items, METH_NOARGS, "return an iterator over (key, value) pairs, sorted by key"},
     {NULL}
 };
 

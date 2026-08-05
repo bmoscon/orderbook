@@ -178,6 +178,51 @@ def test_to_list():
             assert val < previous
         previous = val
 
+def test_items():
+    asc = SortedDict({4: 'a', 1: 'c', 3: 'f'}, ordering='ASC')
+    desc = SortedDict({4: 'a', 1: 'c', 3: 'f'}, ordering='DESC')
+
+    assert list(asc.items()) == [(1, 'c'), (3, 'f'), (4, 'a')]
+    assert list(desc.items()) == [(4, 'a'), (3, 'f'), (1, 'c')]
+    assert list(asc.items()) == asc.to_list()
+    assert list(desc.items()) == desc.to_list()
+
+    for key, value in asc.items():
+        assert asc[key] == value
+
+
+def test_items_is_lazy():
+    d = SortedDict({1: 'a', 2: 'b', 3: 'c'})
+    it = d.items()
+    assert iter(it) is it
+    assert next(it) == (1, 'a')
+    assert next(it) == (2, 'b')
+    assert next(it) == (3, 'c')
+    with pytest.raises(StopIteration):
+        next(it)
+
+
+def test_items_depth():
+    d = SortedDict({i: i for i in range(100)}, max_depth=10)
+    assert list(d.items()) == [(i, i) for i in range(10)]
+
+
+def test_items_mutation():
+    d = SortedDict({1: 'a', 2: 'b'})
+    it = d.items()
+    assert next(it) == (1, 'a')
+    d[2] = 'z'
+    assert next(it) == (2, 'z')
+
+    # a level deleted mid iteration raises
+    d = SortedDict({1: 'a', 2: 'b'})
+    it = d.items()
+    assert next(it) == (1, 'a')
+    del d[2]
+    with pytest.raises(KeyError):
+        next(it)
+
+
 def test_init_from_dict():
     with pytest.raises(TypeError):
         asc = SortedDict("a", ordering='ASC')

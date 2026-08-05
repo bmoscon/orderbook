@@ -128,6 +128,19 @@ def test_orderbook_keys():
     assert ob.ask.to_dict() == {1: 4}
 
 
+def test_orderbook_items():
+    ob = OrderBook()
+    ob.bids = {1: 10, 3: 30, 2: 20}
+    ob.asks = {5: 50, 4: 40, 6: 60}
+
+    assert list(ob.bids.items()) == [(3, 30), (2, 20), (1, 10)]
+    assert list(ob.asks.items()) == [(4, 40), (5, 50), (6, 60)]
+    assert list(ob.bids.items()) == ob.bids.to_list()
+
+    for price, size in ob.asks.items():
+        assert ob.asks[price] == size
+
+
 def test_orderbook_setitem():
     ob = OrderBook()
 

@@ -335,8 +335,9 @@ PyMODINIT_FUNC PyInit_order_book(void)
     PyObject *m;
     OrderBookModuleState *st;
 
-    if (PyType_Ready(&OrderbookType) < 0 || PyType_Ready(&SortedDictType) < 0)
+    if (PyType_Ready(&OrderbookType) < 0 || PyType_Ready(&SortedDictType) < 0 || PyType_Ready(&SortedDictItemsIterType) < 0) {
         return NULL;
+    }
 
     m = PyModule_Create(&orderbookmodule);
     if (m == NULL)
@@ -417,7 +418,7 @@ static OrderBookModuleState* get_order_book_state(PyObject *m)
 }
 
 
-// Checksums Code
+// Checksum Code
 static int kraken_string_builder(PyObject *pydata, uint8_t *data, int *pos, int size)
 {
     PyObject *repr = PyObject_Str(pydata);
