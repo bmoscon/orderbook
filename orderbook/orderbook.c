@@ -7,7 +7,26 @@ associated with this software.
 #include "orderbook.h"
 #include "utils.h"
 
-typedef int (*string_builder_t)(PyObject *pydata, uint8_t *data, int *pos);
+
+typedef int (*string_builder_t)(PyObject *pydata, uint8_t *data, int *pos, int size);
+
+
+static int checksum_overflow(void)
+{
+    PyErr_SetString(PyExc_ValueError, "book values too long for this checksum format");
+    return -1;
+}
+
+static void replace_side(SortedDict *side, PyObject *data)
+{
+    PyObject *previous = side->data;
+
+    side->data = data;
+    side->dirty = true;
+    Py_CLEAR(side->keys);
+
+    Py_DECREF(previous);
+}
 
 
 void Orderbook_dealloc(Orderbook *self)
@@ -69,6 +88,7 @@ PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         self->checksum = INVALID_CHECKSUM_FORMAT;
         self->checksum_buffer = NULL;
         self->checksum_len = 0;
+        self->checksumming = false;
     }
     return (PyObject *) self;
 }
@@ -79,10 +99,15 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
     static char *kwlist[] = {"max_depth", "max_depth_strict", "checksum_format", NULL};
     Py_buffer checksum_str = {0};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|ipz*", kwlist, &self->max_depth, &self->truncate, &checksum_str)) {
+   // reachable because rendering a level calls __str__ (which could be re-entrant)
+    if (EXPECT(self->checksumming, 0)) {
+        PyErr_SetString(PyExc_RuntimeError, "cannot modify orderbook while checksumming");
         return -1;
     }
 
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|ipz*", kwlist, &self->max_depth, &self->truncate, &checksum_str)) {
+        return -1;
+    }
 
     if (checksum_str.buf && checksum_str.len) {
         enum Checksums format;
@@ -185,6 +210,12 @@ PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored)
         return NULL;
     }
 
+    // see __init__
+    if (EXPECT(self->checksumming, 0)) {
+        PyErr_SetString(PyExc_RuntimeError, "cannot checksum while checksumming"");
+        return NULL;
+    }
+
     if (EXPECT(update_keys(self->bids), 0)) {
         return NULL;
     }
@@ -195,7 +226,12 @@ PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored)
 
     memset(self->checksum_buffer, 0, self->checksum_len);
 
-    return calculate_checksum(self);
+    Orderbook *book = (Orderbook *)self;
+    book->checksumming = true;
+    PyObject *ret = calculate_checksum(self);
+    book->checksumming = false;
+
+    return ret;
 }
 
 
@@ -282,15 +318,7 @@ int Orderbook_setitem(const Orderbook *self, PyObject *key, PyObject *value)
         return -1;
     }
 
-    if (key_int == BID) {
-        Py_DECREF(self->bids->data);
-        self->bids->data = copy;
-        self->bids->dirty = true;
-    } else if (key_int == ASK) {
-        Py_DECREF(self->asks->data);
-        self->asks->data = copy;
-        self->asks->dirty = true;
-    }
+    replace_side(key_int == BID ? self->bids : self->asks, copy);
 
     return 0;
 }
@@ -390,7 +418,7 @@ static OrderBookModuleState* get_order_book_state(PyObject *m)
 
 
 // Checksums Code
-static int kraken_string_builder(PyObject *pydata, uint8_t *data, int *pos)
+static int kraken_string_builder(PyObject *pydata, uint8_t *data, int *pos, int size)
 {
     PyObject *repr = PyObject_Str(pydata);
     if (EXPECT(!repr, 0)) {
@@ -422,6 +450,10 @@ static int kraken_string_builder(PyObject *pydata, uint8_t *data, int *pos)
                 string++;
                 continue;
             }
+            if (EXPECT(*pos >= size, 0)) {
+                Py_DECREF(str);
+                return checksum_overflow();
+            }
             data[(*pos)++] = *string;
         }
         string++;
@@ -433,22 +465,79 @@ static int kraken_string_builder(PyObject *pydata, uint8_t *data, int *pos)
 }
 
 
-static int kraken_populate_side(const SortedDict *side, uint8_t *data, int *pos)
+typedef struct {
+    PyObject *keys;
+    PyObject *contents;
+    Py_ssize_t levels;
+} side_snapshot;
+
+
+static void snapshot_side(const SortedDict *side, Py_ssize_t limit, side_snapshot *snap)
 {
-    uint32_t size = SortedDict_len(side);
-    if (size > 10) { // 10 is the kraken defined number of price/size pairs to use from each side
-        size = 10;
+    snap->keys = Py_NewRef(side->keys);
+    snap->contents = Py_NewRef(side->data);
+
+    Py_ssize_t levels = SortedDict_len(side);
+    Py_ssize_t cached = PyTuple_GET_SIZE(snap->keys);
+
+    if (levels > cached) {
+        levels = cached;
     }
 
-    for(uint32_t i = 0; i < size; ++i) {
-        PyObject *price = PyTuple_GET_ITEM(side->keys, i);
-        PyObject *size = PyDict_GetItem(side->data, price);
+    if (limit >= 0 && levels > limit) {
+        levels = limit;
+    }
 
-        if (EXPECT(kraken_string_builder(price, data, pos), 0)) {
+    snap->levels = levels;
+}
+
+
+static void release_side(side_snapshot *snap)
+{
+    Py_CLEAR(snap->contents);
+    Py_CLEAR(snap->keys);
+}
+
+
+static int snapshot_level(const side_snapshot *snap, Py_ssize_t index, PyObject **price, PyObject **amount)
+{
+    PyObject *key = Py_NewRef(PyTuple_GET_ITEM(snap->keys, index));
+    PyObject *value = PyDict_GetItemWithError(snap->contents, key);
+
+    if (EXPECT(!value, 0)) {
+        if (!PyErr_Occurred()) {
+            PyErr_SetObject(PyExc_KeyError, key);
+        }
+        Py_DECREF(key);
+        return -1;
+    }
+
+    *price = key;
+    *amount = Py_NewRef(value);
+
+    return 0;
+}
+
+
+static int kraken_populate_side(const side_snapshot *snap, uint8_t *data, int *pos, int size)
+{
+    for(Py_ssize_t i = 0; i < snap->levels; ++i) {
+        PyObject *price = NULL;
+        PyObject *amount = NULL;
+
+        if (EXPECT(snapshot_level(snap, i, &price, &amount), 0)) {
             return -1;
         }
 
-        if (EXPECT(kraken_string_builder(size, data, pos), 0)) {
+        int ret = kraken_string_builder(price, data, pos, size);
+        if (EXPECT(ret == 0, 1)) {
+            ret = kraken_string_builder(amount, data, pos, size);
+        }
+
+        Py_DECREF(amount);
+        Py_DECREF(price);
+
+        if (EXPECT(ret, 0)) {
             return -1;
         }
     }
@@ -464,24 +553,52 @@ static PyObject* kraken_checksum(const Orderbook *ob)
         return NULL;
     }
 
+    // 10 is the kraken defined number of price/size pairs to use from each side
+    side_snapshot asks, bids;
+    snapshot_side(ob->asks, 10, &asks);
+    snapshot_side(ob->bids, 10, &bids);
+
+    PyObject *ret = NULL;
     int pos = 0;
-    if (EXPECT(kraken_populate_side(ob->asks, ob->checksum_buffer, &pos), 0)) {
-        return NULL;
+
+    if (EXPECT(kraken_populate_side(&asks, ob->checksum_buffer, &pos, ob->checksum_len), 0)) {
+        goto done;
     }
 
-    if (EXPECT(kraken_populate_side(ob->bids, ob->checksum_buffer, &pos), 0)) {
-        return NULL;
+    if (EXPECT(kraken_populate_side(&bids, ob->checksum_buffer, &pos, ob->checksum_len), 0)) {
+        goto done;
     }
 
-    unsigned long ret = crc32_table(ob->checksum_buffer, pos);
+    ret = PyLong_FromUnsignedLong(crc32_table(ob->checksum_buffer, pos));
 
-    return PyLong_FromUnsignedLong(ret);
+done:
+    release_side(&bids);
+    release_side(&asks);
+
+    return ret;
 }
 
 
+static int append_bytes(PyObject *str, uint8_t *data, int *pos, int size)
+{
+    const char *string = PyBytes_AS_STRING(str);
+    if (EXPECT(!string, 0)) {
+        return -1;
+    }
+
+    Py_ssize_t len = PyBytes_GET_SIZE(str);
+    if (EXPECT(len > size - *pos, 0)) {
+        return checksum_overflow();
+    }
+
+    memcpy(&data[*pos], string, len);
+    *pos += len;
+
+    return 0;
+}
 
 
-static int str_string_builder(PyObject *pydata, uint8_t *data, int *pos)
+static int str_string_builder(PyObject *pydata, uint8_t *data, int *pos, int size)
 {
     PyObject *repr = PyObject_Str(pydata);
     if (EXPECT(!repr, 0)) {
@@ -494,23 +611,15 @@ static int str_string_builder(PyObject *pydata, uint8_t *data, int *pos)
         return -1;
     }
 
-    const char *string = PyBytes_AS_STRING(str);
-    if (EXPECT(!string, 0)) {
-        Py_DECREF(str);
-        return -1;
-    }
-
-    int len = strlen(string);
-    memcpy(&data[*pos], string, len);
-    *pos += len;
+    int ret = append_bytes(str, data, pos, size);
 
     Py_DECREF(str);
 
-    return 0;
+    return ret;
 }
 
 
-static int floatstr_string_builder(PyObject *pydata, uint8_t *data, int *pos)
+static int floatstr_string_builder(PyObject *pydata, uint8_t *data, int *pos, int size)
 {
     PyObject *repr = PyObject_Str(pydata);
     if (EXPECT(!repr, 0)) {
@@ -525,7 +634,7 @@ static int floatstr_string_builder(PyObject *pydata, uint8_t *data, int *pos)
 
     Py_DECREF(repr);
 
-    if (EXPECT(str_string_builder(flt, data, pos), 0)) {
+    if (EXPECT(str_string_builder(flt, data, pos, size), 0)) {
         Py_DECREF(flt);
         return -1;
     }
@@ -535,7 +644,7 @@ static int floatstr_string_builder(PyObject *pydata, uint8_t *data, int *pos)
 }
 
 
-static int formatf_string_builder(PyObject *pydata, uint8_t *data, int *pos)
+static int formatf_string_builder(PyObject *pydata, uint8_t *data, int *pos, int size)
 {
     OrderBookModuleState* st = get_order_book_state(NULL);
 
@@ -550,32 +659,24 @@ static int formatf_string_builder(PyObject *pydata, uint8_t *data, int *pos)
         return -1;
     }
 
-    const char *string = PyBytes_AS_STRING(str);
-    if (EXPECT(!string, 0)) {
-        Py_DECREF(str);
-        return -1;
-    }
-
-    int len = strlen(string);
-    memcpy(&data[*pos], string, len);
-    *pos += len;
+    int ret = append_bytes(str, data, pos, size);
 
     Py_DECREF(str);
-    return 0;
+    return ret;
 }
 
 
-static int okx_string_builder(PyObject *pydata, uint8_t *data, int *pos)
+static int okx_string_builder(PyObject *pydata, uint8_t *data, int *pos, int size)
 {
     int startpos = *pos;
-    if (EXPECT(str_string_builder(pydata, data, pos), 0)) {
+    if (EXPECT(str_string_builder(pydata, data, pos, size), 0)) {
         return -1;
     }
 
     // default 'str' formatting is wrong when the value is in scientific notation
     if (EXPECT((long)memchr(&data[startpos], (char) 'E', *pos - startpos), (long)0)) {
         *pos = startpos;
-        if (EXPECT(formatf_string_builder(pydata, data, pos), 0)) {
+        if (EXPECT(formatf_string_builder(pydata, data, pos, size), 0)) {
             return -1;
         }
     }
@@ -584,22 +685,63 @@ static int okx_string_builder(PyObject *pydata, uint8_t *data, int *pos)
 }
 
 
-static int ftx_string_builder(PyObject *pydata, uint8_t *data, int *pos)
+static int ftx_string_builder(PyObject *pydata, uint8_t *data, int *pos, int size)
 {
     int startpos = *pos;
-    if (EXPECT(str_string_builder(pydata, data, pos), 0)) {
+    if (EXPECT(str_string_builder(pydata, data, pos, size), 0)) {
         return -1;
     }
 
     // default 'str' formatting is wrong when the value is less than 0.0001 or in scientific notation
-    if (EXPECT(!strncmp((const char *)&data[startpos], "0.0000", 6) || memchr(&data[startpos], (char) 'E', *pos - startpos), 0)) {
+    int written = *pos - startpos;
+    if (EXPECT((written >= 6 && !strncmp((const char *)&data[startpos], "0.0000", 6)) || memchr(&data[startpos], (char) 'E', written), 0)) {
         *pos = startpos;
-        if (EXPECT(floatstr_string_builder(pydata, data, pos), 0)) {
+        if (EXPECT(floatstr_string_builder(pydata, data, pos, size), 0)) {
             return -1;
         }
     }
 
     return 0;
+}
+
+
+// append one price/size pair followed by the separator
+static int append_level(const side_snapshot *snap, Py_ssize_t index, uint8_t *data, int *pos, int size, char separator, string_builder_t string_builder)
+{
+    PyObject *price = NULL;
+    PyObject *amount = NULL;
+
+    if (EXPECT(snapshot_level(snap, index, &price, &amount), 0)) {
+        return -1;
+    }
+
+    int ret = -1;
+
+    if (EXPECT(string_builder(price, data, pos, size), 0)) {
+        goto done;
+    }
+    if (EXPECT(*pos >= size, 0)) {
+        checksum_overflow();
+        goto done;
+    }
+    data[(*pos)++] = separator;
+
+    if (EXPECT(string_builder(amount, data, pos, size), 0)) {
+        goto done;
+    }
+    if (EXPECT(*pos >= size, 0)) {
+        checksum_overflow();
+        goto done;
+    }
+    data[(*pos)++] = separator;
+
+    ret = 0;
+
+done:
+    Py_DECREF(amount);
+    Py_DECREF(price);
+
+    return ret;
 }
 
 
@@ -610,49 +752,37 @@ static PyObject* alternating_checksum(const Orderbook *ob, const uint32_t depth,
         return NULL;
     }
 
+    side_snapshot bids, asks;
+    snapshot_side(ob->bids, -1, &bids);
+    snapshot_side(ob->asks, -1, &asks);
+
+    PyObject *ret = NULL;
     int pos = 0;
-    uint32_t bids_size = SortedDict_len(ob->bids);
-    uint32_t asks_size = SortedDict_len(ob->asks);
-    PyObject *price = NULL;
-    PyObject *size = NULL;
+    int buffer_len = ob->checksum_len;
 
-    for(uint32_t i = 0; i < depth; ++i) { 
-        if (i < bids_size) {
-            price = PyTuple_GET_ITEM(ob->bids->keys, i);
-            size = PyDict_GetItem(ob->bids->data, price);
-
-            if (EXPECT(string_builder(price, ob->checksum_buffer, &pos), 0)) {
-                return NULL;
+    for(uint32_t i = 0; i < depth; ++i) {
+        if ((Py_ssize_t)i < bids.levels) {
+            if (EXPECT(append_level(&bids, i, ob->checksum_buffer, &pos, buffer_len, separator, string_builder), 0)) {
+                goto done;
             }
-            ob->checksum_buffer[pos++] = separator;
-
-            if (EXPECT(string_builder(size, ob->checksum_buffer, &pos), 0)) {
-                return NULL;
-            }
-            ob->checksum_buffer[pos++] = separator;
         }
 
-        if (i < asks_size) {
-            price = PyTuple_GET_ITEM(ob->asks->keys, i);
-            size = PyDict_GetItem(ob->asks->data, price);
-
-            if (EXPECT(string_builder(price, ob->checksum_buffer, &pos), 0)) {
-                return NULL;
+        if ((Py_ssize_t)i < asks.levels) {
+            if (EXPECT(append_level(&asks, i, ob->checksum_buffer, &pos, buffer_len, separator, string_builder), 0)) {
+                goto done;
             }
-            ob->checksum_buffer[pos++] = separator;
-
-            if (EXPECT(string_builder(size, ob->checksum_buffer, &pos), 0)) {
-                return NULL;
-            }
-            ob->checksum_buffer[pos++] = separator;
         }
     }
 
     int len = (pos > 0) ? pos - 1 : 0;
 
-    unsigned long ret = crc32_table(ob->checksum_buffer, len);
+    ret = PyLong_FromUnsignedLong(crc32_table(ob->checksum_buffer, len));
 
-    return PyLong_FromUnsignedLong(ret);
+done:
+    release_side(&asks);
+    release_side(&bids);
+
+    return ret;
 }
 
 

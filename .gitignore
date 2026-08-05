@@ -133,3 +133,7 @@ dmypy.json
 
 coverage.info
 .DS_Store
+
+# non-public files
+tests/test_non_public.py
+utils/

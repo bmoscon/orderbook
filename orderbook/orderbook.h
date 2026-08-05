@@ -35,6 +35,8 @@ typedef struct {
     uint32_t checksum_len;
     enum Checksums checksum;
     bool truncate;
+    // see __init__ in orderbook.c
+    bool checksumming;
 } Orderbook;
 
 
