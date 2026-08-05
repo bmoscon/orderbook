@@ -1,10 +1,21 @@
-# coverage will need to be installed with pip install coverage
-# lcov may need to be installed as well. On MacOS - brew install lcov
-rm -rf build/
+#!/bin/bash
+# requires uv and lcov to be installed
+set -e
+
+rm -rf build/ dist/
 export CFLAGS="-coverage"
-python setup.py build_ext --inplace
-coverage run --source=./orderbook setup.py test
+
+uv venv
+uv build --wheel --python .venv/bin/python
+uv pip install --reinstall dist/*.whl pytest requests sortedcontainers
+
+# produces the coverage data
+uv run pytest tests/
+
 cd build/temp*
-lcov -c --directory . --output-file coverage.info
+lcov -c --directory . --output-file all.info
+# CPython's headers define inline functions that get compiled into the extension.
+# Drop them so the report reflects this project's sources only.
+lcov --extract all.info '*/orderbook/*' --output-file coverage.info
 genhtml coverage.info --output-directory out
 open out/index.html

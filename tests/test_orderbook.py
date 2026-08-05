@@ -1,5 +1,5 @@
 '''
-Copyright (C) 2020-2024  Bryant Moscon - bmoscon@gmail.com
+Copyright (C) 2020-2026  Bryant Moscon - bmoscon@gmail.com
 
 Please see the LICENSE file for the terms and conditions
 associated with this software.
@@ -16,7 +16,7 @@ from order_book import OrderBook
 def populate_orderbook():
     ob = OrderBook()
 
-    data = requests.get("https://api.pro.coinbase.com/products/BTC-USD/book?level=2").json()
+    data = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/book?level=2").json()
     for side, d in data.items():
         if side == 'bids':
             for price, size, _ in d:
@@ -50,7 +50,7 @@ def test_to_dict():
 def test_orderbook_getitem():
     ob = OrderBook()
 
-    data = requests.get("https://api.pro.coinbase.com/products/BTC-USD/book?level=2").json()
+    data = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/book?level=2").json()
     for side, d in data.items():
         if side in {'bids', 'asks'}:
             for price, size, _ in d:
@@ -131,7 +131,7 @@ def test_orderbook_keys():
 def test_orderbook_setitem():
     ob = OrderBook()
 
-    data = requests.get("https://api.pro.coinbase.com/products/BTC-USD/book?level=2").json()
+    data = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/book?level=2").json()
     ob.bids = {Decimal(price): size for price, size, _ in data['bids']}
     ob.asks = {Decimal(price): size for price, size, _ in data['asks']}
 
@@ -175,7 +175,7 @@ def test_l3_orderbook():
     ob = OrderBook()
     raw_dict = {}
 
-    data = requests.get("https://api.pro.coinbase.com/products/BTC-USD/book?level=3").json()
+    data = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/book?level=3").json()
     for side, d in data.items():
         if side in {'bids', 'asks'}:
             raw_dict[side] = {}

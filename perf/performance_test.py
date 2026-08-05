@@ -1,5 +1,5 @@
 '''
-Copyright (C) 2020-2024  Bryant Moscon - bmoscon@gmail.com
+Copyright (C) 2020-2026  Bryant Moscon - bmoscon@gmail.com
 
 Please see the LICENSE file for the terms and conditions
 associated with this software.
@@ -16,7 +16,7 @@ from order_book import SortedDict, OrderBook
 from pyorderbook import OrderBook as PythonOrderbook, SortedDict as PythonSortedDict
 
 
-data = requests.get("https://api.pro.coinbase.com/products/BTC-USD/book?level=2").json()
+data = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/book?level=2").json()
 
 
 def profile(f):
@@ -155,25 +155,25 @@ def random_data_test(size):
                 break
 
     print(f"C lib with {size} entries (access)")
-    
-    print(f"- index impl ", end="")
+
+    print("- index impl ", end="")
     access_top10_c_index(asc)
-    
-    print(f"- todict impl ", end="")
+
+    print("- todict impl ", end="")
     access_top10_c_todict(asc)
 
-    print(f"- keys impl ", end="")
+    print("- keys impl ", end="")
     access_top10_c_keys(asc)
 
-    print(f"- iter impl (incorrect when called multiple times) ", end="")
+    print("- iter impl (incorrect when called multiple times) ", end="")
     access_top10_iter(asc)
 
-    print(f"- tolist impl ", end="")
+    print("- tolist impl ", end="")
     access_top10_c_tolist(asc)
-    
+
     print(f"Orderbook SortedDict Python lib with {size} entries (access)")
     access_top10_iter(python_sd)
-    
+
     print(f"Python dict (non sorted) with {size} entries (access)")
     access_top10_iter(raw_python)
 

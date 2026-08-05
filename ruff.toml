@@ -1,0 +1,13 @@
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E501",  # line too long
+    "F403",  # star import
+    "F405",  # name may be undefined, from star imports
+]
+
+[lint.per-file-ignores]
+# the perf scripts assign results to locals purely to time the access
+"perf/*" = ["F841"]

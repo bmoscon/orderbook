@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "order_book"
+version = "0.7.0"
+description = "A fast orderbook implementation, in C, for Python"
+authors = [{name = "Bryant Moscon", email = "bmoscon@gmail.com"}]
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+keywords = ["market data", "trading", "order book", "MBO", "L2", "L3", "LOB"]
+dynamic = ["readme"]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: C",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: POSIX",
+]
+
+[project.urls]
+Homepage = "https://github.com/bmoscon/orderbook"
+
+[project.optional-dependencies]
+tests = ["pytest", "requests", "sortedcontainers"]
+
+[tool.setuptools]
+# C lib only, no Python packages
+packages = []
+
+# pyproject.toml cannot glob, make sure all new C files are added here
+ext-modules = [
+    {name = "order_book", sources = ["orderbook/orderbook.c", "orderbook/sorteddict.c", "orderbook/utils.c"], extra-compile-args = ["-O3"]},
+]
+
+[tool.setuptools.dynamic]
+readme = {file = ["README.md", "CHANGES.md"], content-type = "text/markdown"}
