@@ -212,7 +212,7 @@ PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored)
 
     // see __init__
     if (EXPECT(self->checksumming, 0)) {
-        PyErr_SetString(PyExc_RuntimeError, "cannot checksum while checksumming"");
+        PyErr_SetString(PyExc_RuntimeError, "cannot checksum while checksumming");
         return NULL;
     }
 
