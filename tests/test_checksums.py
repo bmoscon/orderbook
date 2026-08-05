@@ -553,3 +553,78 @@ def test_ftx_checksum():
     ob = OrderBook(checksum_format='FTX')
     assert ob.checksum() == 0
 
+
+
+class Unprintable:
+    '''
+    Hashable and sortable (only ever used as the sole entry on a side), but
+    str() raises - which is how the checksum string builders extract values.
+    '''
+    def __str__(self):
+        raise RuntimeError('cannot stringify')
+
+    def __hash__(self):
+        return 1
+
+    def __eq__(self, other):
+        return self is other
+
+
+@pytest.mark.parametrize('fmt,depth', [('OKX', 25), ('BITGET', 25), ('FTX', 100)])
+def test_minimum_depth(fmt, depth):
+    ob = OrderBook(max_depth=depth - 1, checksum_format=fmt)
+    with pytest.raises(ValueError):
+        ob.checksum()
+
+    # exactly at the minimum is fine
+    ob = OrderBook(max_depth=depth, checksum_format=fmt)
+    assert ob.checksum() == 0
+
+
+@pytest.mark.parametrize('fmt', ['KRAKEN', 'OKX', 'BITGET', 'FTX'])
+@pytest.mark.parametrize('side', ['bids', 'asks'])
+def test_checksum_unorderable_keys(fmt, side):
+    ob = OrderBook(checksum_format=fmt)
+    setattr(ob, side, {Decimal(1): Decimal(1), 'a': Decimal(2)})
+
+    with pytest.raises(TypeError):
+        ob.checksum()
+
+
+@pytest.mark.parametrize('fmt', ['KRAKEN', 'OKX', 'BITGET', 'FTX'])
+@pytest.mark.parametrize('side', ['bids', 'asks'])
+def test_checksum_unprintable_price(fmt, side):
+    ob = OrderBook(checksum_format=fmt)
+    setattr(ob, side, {Unprintable(): Decimal(1)})
+
+    with pytest.raises(RuntimeError):
+        ob.checksum()
+
+
+@pytest.mark.parametrize('fmt', ['KRAKEN', 'OKX', 'BITGET', 'FTX'])
+@pytest.mark.parametrize('side', ['bids', 'asks'])
+def test_checksum_unprintable_size(fmt, side):
+    ob = OrderBook(checksum_format=fmt)
+    setattr(ob, side, {Decimal(1): Unprintable()})
+
+    with pytest.raises(RuntimeError):
+        ob.checksum()
+
+
+def test_ftx_checksum_bad_float():
+    # values below 0.0001 are re-rendered via float(), which fails here
+    ob = OrderBook(checksum_format='FTX')
+    ob.bids = {Decimal(1): '0.0000abc'}
+
+    with pytest.raises(ValueError):
+        ob.checksum()
+
+
+def test_okx_checksum_bad_format():
+    # values in scientific notation are re-rendered via format(x, 'f'),
+    # which str does not support
+    ob = OrderBook(checksum_format='OKX')
+    ob.bids = {Decimal(1): '1E5'}
+
+    with pytest.raises(ValueError):
+        ob.checksum()

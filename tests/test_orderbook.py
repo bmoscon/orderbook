@@ -246,3 +246,40 @@ def test_to_dict_types():
     data = ob.to_dict(from_type=str, to_type=float)
     assert data['bid'] == {1.1: 2, 3.3: 4, 5.5: 6, 7.7: 8}
     assert data['ask'] == {1.1: 2, 3.3: 4, 5.5: 6, 7.7: 8}
+
+
+def test_invalid_checksum_format():
+    with pytest.raises(TypeError):
+        OrderBook(checksum_format='NOT_AN_EXCHANGE')
+
+
+def test_unencodable_key():
+    ob = OrderBook()
+
+    # lone surrogates cannot be encoded to UTF-8
+    with pytest.raises(UnicodeEncodeError):
+        ob['\ud800']
+
+    with pytest.raises(UnicodeEncodeError):
+        ob['\ud800'] = {}
+
+
+def test_to_dict_invalid_kwarg():
+    with pytest.raises(TypeError):
+        OrderBook().to_dict(bogus=1)
+
+
+def test_to_dict_conversion_failure():
+    # failure on the bid side
+    ob = OrderBook()
+    ob.bids = {1: 'x'}
+    ob.asks = {1: 1}
+    with pytest.raises(ValueError):
+        ob.to_dict(to_type=int)
+
+    # failure on the ask side, after the bids converted cleanly
+    ob = OrderBook()
+    ob.bids = {1: 1}
+    ob.asks = {2: 'x'}
+    with pytest.raises(ValueError):
+        ob.to_dict(to_type=int)

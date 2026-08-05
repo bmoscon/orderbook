@@ -346,3 +346,86 @@ def test_to_dict_types():
     assert d.to_dict(to_type=str) == {'1': '2', '3.3': '4', '5.6': '7.8', '9': '11.11', '1.3': '3.3', '77.8': '19.9'}
     assert d.to_dict(from_type=str, to_type=float) == input
     assert d.to_dict(to_type=float, from_type=Decimal) == {1: 2, 3.3: 4, 5.6: 7.8, 9: 11.11, 1.3: 3.3, 77.8: 19.9}
+
+
+def unorderable():
+    '''
+    A dict whose keys cannot be sorted against each other. Sorting is deferred
+    until the keys are actually needed, so building this never raises.
+    '''
+    d = SortedDict()
+    d[1] = 'a'
+    d['b'] = 'c'
+    return d
+
+
+def test_depth_overflow():
+    with pytest.raises(OverflowError):
+        SortedDict(max_depth=2 ** 100)
+
+
+def test_unencodable_ordering():
+    # lone surrogates cannot be encoded to UTF-8
+    with pytest.raises(UnicodeEncodeError):
+        SortedDict(ordering='\ud800')
+
+
+def test_unorderable_keys():
+    with pytest.raises(TypeError):
+        unorderable().keys()
+
+    with pytest.raises(TypeError):
+        unorderable().index(0)
+
+    with pytest.raises(TypeError):
+        unorderable().to_dict()
+
+    with pytest.raises(TypeError):
+        unorderable().to_list()
+
+    with pytest.raises(TypeError):
+        list(unorderable())
+
+
+def test_unorderable_keys_truncate():
+    d = SortedDict(max_depth=2)
+    d[1] = 'a'
+    d['b'] = 'c'
+
+    with pytest.raises(TypeError):
+        d.truncate()
+
+
+def test_unorderable_keys_auto_truncate():
+    # truncation happens on insert, so the failure surfaces from __setitem__
+    d = SortedDict({1: 'a'}, max_depth=1, truncate=True)
+
+    with pytest.raises(TypeError):
+        d['b'] = 'c'
+
+
+def test_unorderable_keys_init_truncate():
+    with pytest.raises(TypeError):
+        SortedDict({1: 'a', 'b': 'c'}, max_depth=1, truncate=True)
+
+
+def test_to_dict_invalid_kwarg():
+    with pytest.raises(TypeError):
+        SortedDict().to_dict(bogus=1)
+
+
+def test_to_dict_conversion_failure():
+    # key cannot be converted
+    with pytest.raises(ValueError):
+        SortedDict({'x': 1}).to_dict(to_type=int)
+
+    # value cannot be converted
+    with pytest.raises(ValueError):
+        SortedDict({1: 'x'}).to_dict(to_type=int)
+
+
+def test_unhashable_key():
+    d = SortedDict()
+
+    with pytest.raises(TypeError):
+        d[[1, 2]] = 3

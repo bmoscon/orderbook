@@ -1,5 +1,8 @@
 ## Changelog
 
+### 0.7.1
+ * Update: Add more unit tests to increase code coverage
+
 ### 0.7.0 (2026-08-05)
  * Update: Modernize project (uv, pyproject.toml, etc)
  * Update: Update readme, tests, examples, etc

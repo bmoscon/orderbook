@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.12+-green.svg)
 [![PyPi](https://img.shields.io/badge/PyPi-order--book-brightgreen)](https://pypi.python.org/pypi/order-book)
-![coverage-lines](https://img.shields.io/badge/coverage%3A%20lines-81.4%25-blue)
+![coverage-lines](https://img.shields.io/badge/coverage%3A%20lines-88.5%25-blue)
 ![coverage-functions](https://img.shields.io/badge/coverage%3A%20functions-100%25-blue)
 
 
