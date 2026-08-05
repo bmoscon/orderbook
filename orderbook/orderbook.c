@@ -12,12 +12,36 @@ typedef int (*string_builder_t)(PyObject *pydata, uint8_t *data, int *pos);
 
 void Orderbook_dealloc(Orderbook *self)
 {
-    if (self->checksum_buffer) {
-        free(self->checksum_buffer);
-    }
-    Py_XDECREF(self->bids);
-    Py_XDECREF(self->asks);
+    PyObject_GC_UnTrack(self);
+    free(self->checksum_buffer);
+    self->checksum_buffer = NULL;
+    Py_CLEAR(self->bids);
+    Py_CLEAR(self->asks);
     Py_TYPE(self)->tp_free((PyObject *) self);
+}
+
+
+int Orderbook_traverse(Orderbook *self, visitproc visit, void *arg)
+{
+    Py_VISIT(self->bids);
+    Py_VISIT(self->asks);
+    return 0;
+}
+
+
+int Orderbook_clear(Orderbook *self)
+{
+    // the two sides are emptied rather than dropped which is enough
+    // to break any cycle
+    if (self->bids) {
+        SortedDict_clear(self->bids);
+    }
+
+    if (self->asks) {
+        SortedDict_clear(self->asks);
+    }
+
+    return 0;
 }
 
 
@@ -35,7 +59,6 @@ PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 
         self->asks = (SortedDict *)SortedDict_new(&SortedDictType, NULL, NULL);
         if (self->asks == NULL) {
-            Py_DECREF(self->bids);
             Py_DECREF(self);
             return NULL;
         }
@@ -62,44 +85,44 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
 
 
     if (checksum_str.buf && checksum_str.len) {
+        enum Checksums format;
+        uint32_t buffer_len;
+
         if (strncmp(checksum_str.buf, "KRAKEN", checksum_str.len) == 0) {
-            self->checksum = KRAKEN;
-            self->checksum_buffer = calloc(2048, sizeof(uint8_t));
-            self->checksum_len = 2048;
-            if (!self->checksum_buffer) {
-                PyErr_SetNone(PyExc_MemoryError);
-                return -1;
-            }
+            format = KRAKEN;
+            buffer_len = 2048;
         } else if ((checksum_str.len > 2) && (strncmp(checksum_str.buf, "FTX", 3) == 0)) {
-            self->checksum = FTX;
-            self->checksum_buffer = calloc(20480, sizeof(uint8_t));
-            self->checksum_len = 20480;
-            if (!self->checksum_buffer) {
-                PyErr_SetNone(PyExc_MemoryError);
-                return -1;
-            }
+            format = FTX;
+            buffer_len = 20480;
         } else if ((checksum_str.len > 2) && ((strncmp(checksum_str.buf, "OKX", 3) == 0) || (strncmp(checksum_str.buf, "OKCO", 4) == 0))) {
-            self->checksum = OKX;
-            self->checksum_buffer = calloc(4096, sizeof(uint8_t));
-            self->checksum_len = 4096;
-            if (!self->checksum_buffer) {
-                PyErr_SetNone(PyExc_MemoryError);
-                return -1;
-            }
+            format = OKX;
+            buffer_len = 4096;
         } else if (strncmp(checksum_str.buf, "BITGET", checksum_str.len) == 0) {
-            self->checksum = BITGET;
-            self->checksum_buffer = calloc(4096, sizeof(uint8_t));
-            self->checksum_len = 4096;
-            if (!self->checksum_buffer) {
-                PyErr_SetNone(PyExc_MemoryError);
-                return -1;
-            }
+            format = BITGET;
+            buffer_len = 4096;
         } else {
             PyBuffer_Release(&checksum_str);
             PyErr_SetString(PyExc_TypeError, "invalid checksum format specified");
             return -1;
         }
+
+        uint8_t *buffer = calloc(buffer_len, sizeof(uint8_t));
+        if (!buffer) {
+            PyBuffer_Release(&checksum_str);
+            PyErr_SetNone(PyExc_MemoryError);
+            return -1;
+        }
+
+        // __init__ can be called more than once on the same book
+        // so make sure we are properly cleaning up
+        free(self->checksum_buffer);
+        self->checksum = format;
+        self->checksum_buffer = buffer;
+        self->checksum_len = buffer_len;
     } else {
+        free(self->checksum_buffer);
+        self->checksum_buffer = NULL;
+        self->checksum_len = 0;
         self->checksum = INVALID_CHECKSUM_FORMAT;
     }
 
@@ -195,7 +218,13 @@ PyObject *Orderbook_getitem(const Orderbook *self, PyObject *key)
         return NULL;
     }
 
-    enum side_e key_int = check_key(PyBytes_AsString(str));
+    const char *name = PyBytes_AsString(str);
+    if (EXPECT(!name, 0)) {
+        Py_DECREF(str);
+        return NULL;
+    }
+
+    enum side_e key_int = check_key(name);
     Py_DECREF(str);
 
     if (key_int == BID) {
@@ -224,7 +253,13 @@ int Orderbook_setitem(const Orderbook *self, PyObject *key, PyObject *value)
         return -1;
     }
 
-    enum side_e key_int = check_key(PyBytes_AsString(str));
+    const char *name = PyBytes_AsString(str);
+    if (EXPECT(!name, 0)) {
+        Py_DECREF(str);
+        return -1;
+    }
+
+    enum side_e key_int = check_key(name);
     Py_DECREF(str);
 
     if (EXPECT(key_int == INVALID_SIDE, 0)) {
@@ -295,9 +330,9 @@ PyMODINIT_FUNC PyInit_order_book(void)
 
     st = get_order_book_state(m);
 
-    PyObject* builtins = PyImport_AddModule("builtins");
+    // dont use addModule here (borrowed ref), needs a strong ref
+    PyObject* builtins = PyImport_ImportModule("builtins");
     if (builtins == NULL) {
-        Py_DECREF(&SortedDictType);
         Py_DECREF(m);
         return NULL;
     }
@@ -305,15 +340,13 @@ PyMODINIT_FUNC PyInit_order_book(void)
     st->format = PyObject_GetAttrString(builtins, "format");
     Py_DECREF(builtins);
     if (st->format == NULL) {
-        Py_DECREF(&SortedDictType);
         Py_DECREF(m);
         return NULL;
     }
 
     st->formatf = PyUnicode_FromString("f");
     if (st->formatf == NULL) {
-        Py_DECREF(st->format);
-        Py_DECREF(&SortedDictType);
+        Py_CLEAR(st->format);
         Py_DECREF(m);
         return NULL;
     }

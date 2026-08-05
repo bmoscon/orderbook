@@ -37,6 +37,8 @@ typedef struct {
 void SortedDict_dealloc(SortedDict *self);
 PyObject *SortedDict_new(PyTypeObject *type, PyObject *args, PyObject *kwds);
 int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds);
+int SortedDict_traverse(SortedDict *self, visitproc visit, void *arg);
+int SortedDict_clear(SortedDict *self);
 
 
 PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored));
@@ -59,7 +61,7 @@ PyObject *SortedDict_next(SortedDict *self);
 static PyMemberDef SortedDict_members[] = {
     {"__data", T_OBJECT_EX, offsetof(SortedDict, data), READONLY, "internal data"},
     {"__ordering", T_INT, offsetof(SortedDict, ordering), 0, "ordering flag"},
-    {"__truncate", T_INT, offsetof(SortedDict, truncate), 0, "truncate flag"},
+    {"__truncate", T_BOOL, offsetof(SortedDict, truncate), 0, "truncate flag"},
     {"__max_depth", T_INT, offsetof(SortedDict, depth), 0, "maximum depth"},
     {NULL}
 };
@@ -94,10 +96,12 @@ static PyTypeObject SortedDictType = {
     .tp_doc = "An SortedDict data structure",
     .tp_basicsize = sizeof(SortedDict),
     .tp_itemsize = 0,
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC,
     .tp_new = SortedDict_new,
     .tp_init = (initproc) SortedDict_init,
     .tp_dealloc = (destructor) SortedDict_dealloc,
+    .tp_traverse = (traverseproc) SortedDict_traverse,
+    .tp_clear = (inquiry) SortedDict_clear,
     .tp_members = SortedDict_members,
     .tp_methods = SortedDict_methods,
     .tp_as_mapping = &SortedDict_mapping,

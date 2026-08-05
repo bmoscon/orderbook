@@ -41,6 +41,8 @@ typedef struct {
 void Orderbook_dealloc(Orderbook *self);
 PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds);
 int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds);
+int Orderbook_traverse(Orderbook *self, visitproc visit, void *arg);
+int Orderbook_clear(Orderbook *self);
 
 PyObject* Orderbook_todict(const Orderbook *self, PyObject *unused, PyObject *kwargs);
 PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored));
@@ -55,10 +57,12 @@ int Orderbook_setattr(const PyObject *self, PyObject *attr, PyObject *value);
 
 // Orderbook class members
 static PyMemberDef Orderbook_members[] = {
-    {"bids", T_OBJECT_EX, offsetof(Orderbook, bids), 0, "bids"},
-    {"bid", T_OBJECT_EX, offsetof(Orderbook, bids), 0, "bids"},
-    {"asks", T_OBJECT_EX, offsetof(Orderbook, asks), 0, "asks"},
-    {"ask", T_OBJECT_EX, offsetof(Orderbook, asks), 0, "asks"},
+    // needs to be RO, previously was allowing non sortedDict values
+    // and we need setattro to validate the values
+    {"bids", T_OBJECT_EX, offsetof(Orderbook, bids), READONLY, "bids"},
+    {"bid", T_OBJECT_EX, offsetof(Orderbook, bids), READONLY, "bids"},
+    {"asks", T_OBJECT_EX, offsetof(Orderbook, asks), READONLY, "asks"},
+    {"ask", T_OBJECT_EX, offsetof(Orderbook, asks), READONLY, "asks"},
     {"max_depth", T_INT, offsetof(Orderbook, max_depth), READONLY, "maximum book depth"},
     {NULL}
 };
@@ -87,10 +91,12 @@ static PyTypeObject OrderbookType = {
     .tp_doc = "An Orderbook data structure",
     .tp_basicsize = sizeof(Orderbook),
     .tp_itemsize = 0,
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC,
     .tp_new = Orderbook_new,
     .tp_init = (initproc) Orderbook_init,
     .tp_dealloc = (destructor) Orderbook_dealloc,
+    .tp_traverse = (traverseproc) Orderbook_traverse,
+    .tp_clear = (inquiry) Orderbook_clear,
     .tp_members = Orderbook_members,
     .tp_methods = Orderbook_methods,
     .tp_as_mapping = &Orderbook_mapping,
