@@ -7,6 +7,7 @@
  * Bugfix: .index() not properly respecting max_depth
  * Bugfix: failed delete no longer invalidates the cached keys
  * Bugfix: issue #31 sortedDict iterator revamp
+ * Performance: change setitem to only do one lookup vs two (remove pydict_contains lookup)
 
 ### 0.7.0 (2026-08-05)
  * Update: Modernize project (uv, pyproject.toml, etc)

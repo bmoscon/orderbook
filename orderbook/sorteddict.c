@@ -497,19 +497,23 @@ PyObject *SortedDict_getitem(SortedDict *self, PyObject *key)
 int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
 {
     if (value) {
-        if (EXPECT(PyDict_Contains(self->data, key) == 0, 0)) {
-            self->dirty = true;
-        }
-
+        Py_ssize_t before = PyDict_GET_SIZE(self->data);
         int ret = PyDict_SetItem(self->data, key, value);
 
         if (EXPECT(ret == -1, 0)) {
             return ret;
-        } else if (EXPECT(self->truncate && truncate_to_depth(self), 0)) {
-            return -1;
         }
 
-            return ret;
+        if (PyDict_GET_SIZE(self->data) != before) {
+            // if we did add a new key, set to dirty, truncate
+            self->dirty = true;
+
+            if (EXPECT(self->truncate && truncate_to_depth(self), 0)) {
+                return -1;
+            }
+        }
+
+        return ret;
     } else {
         // setitem also called for del (value will be null for deletes)
         int ret = PyDict_DelItem(self->data, key);
