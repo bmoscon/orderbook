@@ -43,6 +43,26 @@ def test_iteration():
     assert index == 2
 
 
+def test_nested_iteration():
+    d = SortedDict({1: 'a', 2: 'b'})
+
+    pairs = [(a, b) for a in d for b in d]
+    assert pairs == [(1, 1), (1, 2), (2, 1), (2, 2)]
+
+    it1 = iter(d)
+    it2 = iter(d)
+    assert it1 is not d
+    assert it1 is not it2
+    assert next(it1) == 1
+    assert next(it2) == 1
+    assert next(it1) == 2
+
+
+def test_iteration_depth():
+    d = SortedDict({i: i for i in range(100)}, max_depth=10)
+    assert list(d) == list(range(10))
+
+
 def test_index():
     s = SortedDict(ordering='DESC')
     s[1] = "a"

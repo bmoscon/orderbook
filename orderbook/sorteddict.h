@@ -27,7 +27,6 @@ typedef struct {
     PyObject *data;
     PyObject *keys;
     enum Ordering ordering;
-    int iterator_index;
     int depth;
     bool truncate;
     bool dirty;
@@ -41,9 +40,10 @@ typedef struct {
     PyObject *data;
     Py_ssize_t index;
     Py_ssize_t len;    // obeys max_depth
-} SortedDictItemsIter;
+    bool pairs;
+} SortedDictIter;
 
-extern PyTypeObject SortedDictItemsIterType;
+extern PyTypeObject SortedDictIterType;
 
 
 void SortedDict_dealloc(SortedDict *self);
@@ -67,7 +67,6 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value);
 int SortedDict_contains(const SortedDict *self, PyObject *value);
 
 PyObject *SortedDict_getiter(SortedDict *self);
-PyObject *SortedDict_next(SortedDict *self);
 
 
 // SortedDict class members
@@ -121,7 +120,6 @@ static PyTypeObject SortedDictType = {
     .tp_as_mapping = &SortedDict_mapping,
     .tp_as_sequence = &SortedDict_seq,
     .tp_iter  = (getiterfunc) SortedDict_getiter,
-    .tp_iternext = (iternextfunc) SortedDict_next,
     .tp_dictoffset = 0,
 };
 

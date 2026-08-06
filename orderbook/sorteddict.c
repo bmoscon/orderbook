@@ -9,6 +9,7 @@ associated with this software.
 
 
 static int truncate_to_depth(SortedDict *self);
+static PyObject *SortedDict_iter_new(SortedDict *self, bool pairs);
 
 
 /* Sorted Dictionary */
@@ -56,8 +57,6 @@ PyObject *SortedDict_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         }
 
         self->ordering = INVALID_ORDERING;
-        // -1 means uninitalized
-        self->iterator_index = -1;
         self->keys = NULL;
         self->dirty = false;
         self->depth = 0;
@@ -512,47 +511,8 @@ int SortedDict_contains(const SortedDict *self, PyObject *value)
     return PySequence_Contains(self->data, value);
 }
 
-/* iterator methods */
-PyObject *SortedDict_getiter(SortedDict *self)
-{
-    Py_INCREF(self);
-    self->iterator_index = -1;
-    return (PyObject *)self;
-}
-
-PyObject *SortedDict_next(SortedDict *self)
-{
-    if (self->iterator_index == -1) {
-        self->iterator_index = 0;
-
-        if (EXPECT(update_keys(self), 0)) {
-            return NULL;
-        }
-
-        Py_ssize_t size = PySequence_Fast_GET_SIZE(self->keys);
-        if (EXPECT(size == 0, 0)){
-            return NULL;
-        }
-
-        PyObject *ret = PySequence_Fast_GET_ITEM(self->keys, self->iterator_index);
-        Py_INCREF(ret);
-        return ret;
-    } else {
-        self->iterator_index++;
-        Py_ssize_t size = PySequence_Fast_GET_SIZE(self->keys);
-        if (size <= self->iterator_index) {
-            self->iterator_index = -1;
-            return NULL;
-        }
-        PyObject *ret = PySequence_Fast_GET_ITEM(self->keys, self->iterator_index);
-        Py_INCREF(ret);
-        return ret;
-    }
-}
-
-
-/* items iterator */
-static void SortedDictItemsIter_dealloc(SortedDictItemsIter *self)
+/* side iterator */
+static void SortedDictIter_dealloc(SortedDictIter *self)
 {
     PyObject_GC_UnTrack(self);
     Py_CLEAR(self->keys);
@@ -561,7 +521,7 @@ static void SortedDictItemsIter_dealloc(SortedDictItemsIter *self)
 }
 
 
-static int SortedDictItemsIter_traverse(SortedDictItemsIter *self, visitproc visit, void *arg)
+static int SortedDictIter_traverse(SortedDictIter *self, visitproc visit, void *arg)
 {
     Py_VISIT(self->keys);
     Py_VISIT(self->data);
@@ -570,7 +530,7 @@ static int SortedDictItemsIter_traverse(SortedDictItemsIter *self, visitproc vis
 }
 
 
-static int SortedDictItemsIter_clear(SortedDictItemsIter *self)
+static int SortedDictIter_clear(SortedDictIter *self)
 {
     Py_CLEAR(self->keys);
     Py_CLEAR(self->data);
@@ -579,13 +539,19 @@ static int SortedDictItemsIter_clear(SortedDictItemsIter *self)
 }
 
 
-static PyObject *SortedDictItemsIter_next(SortedDictItemsIter *self)
+static PyObject *SortedDictIter_next(SortedDictIter *self)
 {
     if (self->index >= self->len) {
         return NULL;
     }
 
     PyObject *key = PyTuple_GET_ITEM(self->keys, self->index);
+
+    if (!self->pairs) {
+        self->index++;
+        return Py_NewRef(key);
+    }
+
     PyObject *value = PyDict_GetItemWithError(self->data, key);
     if (EXPECT(!value, 0)) {
         if (!PyErr_Occurred()) {
@@ -609,28 +575,28 @@ static PyObject *SortedDictItemsIter_next(SortedDictItemsIter *self)
 }
 
 
-PyTypeObject SortedDictItemsIterType = {
+PyTypeObject SortedDictIterType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "order_book.items_iterator",
-    .tp_doc = "iterator over the (key, value) pairs of a SortedDict",
-    .tp_basicsize = sizeof(SortedDictItemsIter),
+    .tp_name = "order_book.side_iterator",
+    .tp_doc = "iterator over the keys or (key, value) pairs of a SortedDict",
+    .tp_basicsize = sizeof(SortedDictIter),
     .tp_itemsize = 0,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
-    .tp_dealloc = (destructor) SortedDictItemsIter_dealloc,
-    .tp_traverse = (traverseproc) SortedDictItemsIter_traverse,
-    .tp_clear = (inquiry) SortedDictItemsIter_clear,
+    .tp_dealloc = (destructor) SortedDictIter_dealloc,
+    .tp_traverse = (traverseproc) SortedDictIter_traverse,
+    .tp_clear = (inquiry) SortedDictIter_clear,
     .tp_iter = PyObject_SelfIter,
-    .tp_iternext = (iternextfunc) SortedDictItemsIter_next,
+    .tp_iternext = (iternextfunc) SortedDictIter_next,
 };
 
 
-PyObject* SortedDict_items(SortedDict *self, PyObject *Py_UNUSED(ignored))
+static PyObject *SortedDict_iter_new(SortedDict *self, bool pairs)
 {
     if (EXPECT(update_keys(self), 0)) {
         return NULL;
     }
 
-    SortedDictItemsIter *it = PyObject_GC_New(SortedDictItemsIter, &SortedDictItemsIterType);
+    SortedDictIter *it = PyObject_GC_New(SortedDictIter, &SortedDictIterType);
     if (EXPECT(!it, 0)) {
         return NULL;
     }
@@ -638,6 +604,7 @@ PyObject* SortedDict_items(SortedDict *self, PyObject *Py_UNUSED(ignored))
     it->keys = Py_NewRef(self->keys);
     it->data = Py_NewRef(self->data);
     it->index = 0;
+    it->pairs = pairs;
 
     Py_ssize_t len = PyTuple_GET_SIZE(it->keys);
     if ((self->depth > 0) && (self->depth < len)) {
@@ -647,4 +614,16 @@ PyObject* SortedDict_items(SortedDict *self, PyObject *Py_UNUSED(ignored))
 
     PyObject_GC_Track(it);
     return (PyObject *)it;
+}
+
+
+PyObject *SortedDict_getiter(SortedDict *self)
+{
+    return SortedDict_iter_new(self, false);
+}
+
+
+PyObject* SortedDict_items(SortedDict *self, PyObject *Py_UNUSED(ignored))
+{
+    return SortedDict_iter_new(self, true);
 }

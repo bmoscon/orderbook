@@ -335,7 +335,7 @@ PyMODINIT_FUNC PyInit_order_book(void)
     PyObject *m;
     OrderBookModuleState *st;
 
-    if (PyType_Ready(&OrderbookType) < 0 || PyType_Ready(&SortedDictType) < 0 || PyType_Ready(&SortedDictItemsIterType) < 0) {
+    if (PyType_Ready(&OrderbookType) < 0 || PyType_Ready(&SortedDictType) < 0 || PyType_Ready(&SortedDictIterType) < 0) {
         return NULL;
     }
 

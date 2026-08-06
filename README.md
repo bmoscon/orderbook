@@ -57,7 +57,6 @@ print(f"Worst bid: {ob.bids.index(-1)}")
 
 # Data is accessible via iteration
 # Note: bids/asks are iterators
-
 print("Top 10 bids")
 for count, price in enumerate(ob.bids):
     if count == 10:
