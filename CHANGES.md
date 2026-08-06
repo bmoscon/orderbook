@@ -4,6 +4,8 @@
  * Feature: issue #14 .items() iterator on book sides
  * Update: Add more unit tests to increase code coverage
  * Bugfix: reference / memory leaks
+ * Bugfix: .index() not properly respecting max_depth
+ * Bugfix: failed delete no longer invalidates the cached keys
  * Bugfix: issue #31 sortedDict iterator revamp
 
 ### 0.7.0 (2026-08-05)

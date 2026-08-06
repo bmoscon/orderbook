@@ -63,6 +63,22 @@ def test_iteration_depth():
     assert list(d) == list(range(10))
 
 
+def test_index_respects_depth():
+    d = SortedDict({i: i for i in range(100)}, max_depth=10)
+
+    assert d.index(0) == (0, 0)
+    assert d.index(9) == (9, 9)
+    # negative indexes are relative to the visible book, not the retained one
+    assert d.index(-1) == (9, 9)
+    assert d.index(-10) == (0, 0)
+
+    with pytest.raises(IndexError):
+        d.index(10)
+
+    with pytest.raises(IndexError):
+        d.index(-11)
+
+
 def test_index():
     s = SortedDict(ordering='DESC')
     s[1] = "a"

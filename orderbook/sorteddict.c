@@ -297,11 +297,23 @@ PyObject* SortedDict_index(SortedDict *self, PyObject *index)
         return NULL;
     }
 
-    // new reference
-    PyObject *key = PySequence_GetItem(self->keys, i);
-    if (EXPECT(!key, 0)) {
+    // validate against max_depth
+    Py_ssize_t len = PyTuple_GET_SIZE(self->keys);
+    if ((self->depth > 0) && (self->depth < len)) {
+        len = self->depth;
+    }
+
+    // negative indexing
+    if (i < 0) {
+        i += len;
+    }
+
+    if (EXPECT(i < 0 || i >= len, 0)) {
+        PyErr_SetString(PyExc_IndexError, "index out of range");
         return NULL;
     }
+
+    PyObject *key = Py_NewRef(PyTuple_GET_ITEM(self->keys, i));
 
     // borrowed reference
     PyObject *value = PyDict_GetItemWithError(self->data, key);
@@ -485,9 +497,9 @@ PyObject *SortedDict_getitem(SortedDict *self, PyObject *key)
 int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
 {
     if (value) {
-	if (EXPECT(PyDict_Contains(self->data, key) == 0, 0)) {
+        if (EXPECT(PyDict_Contains(self->data, key) == 0, 0)) {
             self->dirty = true;
-	}
+        }
 
         int ret = PyDict_SetItem(self->data, key, value);
 
@@ -497,11 +509,15 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
             return -1;
         }
 
-        return ret;
+            return ret;
     } else {
-        self->dirty = true;
-        // setitem also called to for del (value will be null for deletes)
-        return PyDict_DelItem(self->data, key);
+        // setitem also called for del (value will be null for deletes)
+        int ret = PyDict_DelItem(self->data, key);
+        if (ret == 0) {
+            // only mark dirty if key was actually deleted
+            self->dirty = true;
+        }
+        return ret;
     }
 }
 
