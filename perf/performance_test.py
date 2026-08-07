@@ -250,7 +250,10 @@ def timer_resolution():
 
 def percentiles(samples):
     s = sorted(samples)
-    pick = lambda q: s[min(len(s) - 1, int(q * len(s)))]
+
+    def pick(q):
+        return s[min(len(s) - 1, int(q * len(s)))]
+
     return {'p50': pick(0.50), 'p99': pick(0.99),
             'p99.9': pick(0.999) if len(s) >= 10_000 else None, 'max': s[-1]}
 
@@ -633,6 +636,7 @@ def main():
         'seed': args.seed, 'ops': args.ops, 'python_ops': args.python_ops,
         'depth': args.depth, 'python': platform.python_version(),
         'machine': platform.machine(), 'timer_resolution_ns': resolution,
+        'so': sys.modules['order_book'].__file__,
     }}
 
     print(f'order_book real-data benchmark -- {l2_snap["product"]} snapshot '
