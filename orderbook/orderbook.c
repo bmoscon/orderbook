@@ -335,6 +335,11 @@ PyMODINIT_FUNC PyInit_order_book(void)
     PyObject *m;
     OrderBookModuleState *st;
 
+    if (crc32_init() != 0) {
+        PyErr_SetString(PyExc_ImportError, "orderbook requires CRC32 CPU support");
+        return NULL;
+    }
+
     if (PyType_Ready(&OrderbookType) < 0 || PyType_Ready(&SortedDictType) < 0 || PyType_Ready(&SortedDictIterType) < 0) {
         return NULL;
     }
@@ -570,7 +575,7 @@ static PyObject* kraken_checksum(const Orderbook *ob)
         goto done;
     }
 
-    ret = PyLong_FromUnsignedLong(crc32_table(ob->checksum_buffer, pos));
+    ret = PyLong_FromUnsignedLong(crc32(ob->checksum_buffer, pos));
 
 done:
     release_side(&bids);
@@ -777,7 +782,7 @@ static PyObject* alternating_checksum(const Orderbook *ob, const uint32_t depth,
 
     int len = (pos > 0) ? pos - 1 : 0;
 
-    ret = PyLong_FromUnsignedLong(crc32_table(ob->checksum_buffer, len));
+    ret = PyLong_FromUnsignedLong(crc32(ob->checksum_buffer, len));
 
 done:
     release_side(&asks);
