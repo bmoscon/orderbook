@@ -24,6 +24,8 @@ static void replace_side(SortedDict *side, PyObject *data)
     side->data = data;
     side->dirty = true;
     Py_CLEAR(side->keys);
+    // flush before dropping previous - finalizers can reenter
+    SortedDict_flush_pending(side);
 
     Py_DECREF(previous);
 }

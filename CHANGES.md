@@ -11,6 +11,7 @@
  * Performance: checksum now requires hardware support
  * Performance: simplify side lookups
  * Performance: to_dict special path when no type conversion needed
+ * Performance: incremental key cache for small changes between reads
 
 ### 0.7.0 (2026-08-05)
  * Update: Modernize project (uv, pyproject.toml, etc)

@@ -13,9 +13,44 @@ static PyObject *SortedDict_iter_new(SortedDict *self, bool pairs);
 
 
 /* Sorted Dictionary */
+void SortedDict_flush_pending(SortedDict *self)
+{
+    for (uint16_t i = 0; i < self->pend_count; ++i) {
+        Py_CLEAR(self->pend[i].key);
+    }
+    self->pend_count = 0;
+    self->version++;
+}
+
+
+static void escalate_to_dirty(SortedDict *self)
+{
+    SortedDict_flush_pending(self);
+    self->dirty = true;
+}
+
+// append to the changes log, if full set dirty bit to force a sort on next read
+static void log_append(SortedDict *self, uint8_t op, PyObject *key)
+{
+    if (self->pend_count == SD_PENDING_MAX) {
+        escalate_to_dirty(self);
+        return;
+    }
+
+    self->pend[self->pend_count].key = Py_NewRef(key);
+    self->pend[self->pend_count].op = op;
+    self->pend_count++;
+    self->version++;
+}
+
+
 void SortedDict_dealloc(SortedDict *self)
 {
     PyObject_GC_UnTrack(self);
+    for (uint16_t i = 0; i < self->pend_count; ++i) {
+        Py_CLEAR(self->pend[i].key);
+    }
+    self->pend_count = 0;
     Py_CLEAR(self->keys);
     Py_CLEAR(self->data);
     Py_TYPE(self)->tp_free((PyObject *) self);
@@ -26,16 +61,19 @@ int SortedDict_traverse(SortedDict *self, visitproc visit, void *arg)
 {
     Py_VISIT(self->data);
     Py_VISIT(self->keys);
+    for (uint16_t i = 0; i < self->pend_count; ++i) {
+        Py_VISIT(self->pend[i].key);
+    }
     return 0;
 }
 
 
 int SortedDict_clear(SortedDict *self)
 {
+    SortedDict_flush_pending(self);
     Py_CLEAR(self->keys);
 
-    // the two sides are emptied rather than dropped which is enough
-    // to break any cycle
+    // the two sides are emptied rather than dropped which is enough to break any cycle
     if (self->data) {
         PyDict_Clear(self->data);
     }
@@ -61,6 +99,8 @@ PyObject *SortedDict_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         self->dirty = false;
         self->depth = 0;
         self->truncate = false;
+        self->pend_count = 0;
+        self->version = 0;
     }
 
     return (PyObject *) self;
@@ -93,9 +133,9 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
         }
 
         Py_XSETREF(self->data, copy);
-        // the cached keys describe the old data, they cannot be reused
+        // the cached keys and pending log describe the old data
         Py_CLEAR(self->keys);
-        self->dirty = true;
+        escalate_to_dirty(self);
     }
 
 
@@ -171,40 +211,312 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
 }
 
 
-/* internal helper function to update keys */
-inline int update_keys(SortedDict *self) {
-    if (!self->dirty && self->keys) {
-       return 0;
-    }
+static Py_ssize_t keys_bisect(PyObject *keys, PyObject *key, enum Ordering ordering)
+{
+    Py_ssize_t lo = 0;
+    Py_ssize_t hi = PyTuple_GET_SIZE(keys);
+    int op = (ordering == DESCENDING) ? Py_GT : Py_LT;
 
-    PyObject *keys = PyDict_Keys(self->data);
+    while (lo < hi) {
+        Py_ssize_t mid = lo + ((hi - lo) >> 1);
+        int before = PyObject_RichCompareBool(PyTuple_GET_ITEM(keys, mid), key, op);
 
-    if (EXPECT(!keys, 0)) {
-        return 1;
-    }
+        if (EXPECT(before < 0, 0)) {
+            return -1;
+        }
 
-    if (EXPECT(PyList_Sort(keys) < 0, 0)) {
-        Py_DECREF(keys);
-        return 1;
-    }
-
-    if (self->ordering == DESCENDING) {
-        if (EXPECT(PyList_Reverse(keys) < 0, 0)) {
-            Py_DECREF(keys);
-            return 1;
+        if (before) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
         }
     }
 
-    PyObject *ret = PySequence_Tuple(keys);
-    Py_DECREF(keys);
-    if (EXPECT(!ret, 0)) {
-        return 1;
+    return lo;
+}
+
+
+static int full_sort(SortedDict *self)
+{
+    for (int attempt = 0; ; ++attempt) {
+        uint64_t version = self->version;
+
+        PyObject *keys = PyDict_Keys(self->data);
+        if (EXPECT(!keys, 0)) {
+            return 1;
+        }
+
+        if (EXPECT(PyList_Sort(keys) < 0, 0)) {
+            Py_DECREF(keys);
+            return 1;
+        }
+
+        if (self->ordering == DESCENDING) {
+            if (EXPECT(PyList_Reverse(keys) < 0, 0)) {
+                Py_DECREF(keys);
+                return 1;
+            }
+        }
+
+        PyObject *ret = PySequence_Tuple(keys);
+        Py_DECREF(keys);
+        if (EXPECT(!ret, 0)) {
+            return 1;
+        }
+
+        if (EXPECT(self->version == version, 1)) {
+            Py_XSETREF(self->keys, ret);
+            self->dirty = false;
+            return 0;
+        }
+
+        if (attempt == 3) {
+            Py_XSETREF(self->keys, ret);
+            return 0;
+        }
+
+        Py_DECREF(ret);
+    }
+}
+
+
+// ret 0  - key cache is up to date
+// ret 1  - full sort needed
+// ret -1 - exception
+static int apply_pending(SortedDict *self)
+{
+    uint64_t version = self->version;
+    PendingEntry pend[SD_PENDING_MAX];
+    Py_ssize_t count = self->pend_count;
+
+    memcpy(pend, self->pend, count * sizeof(PendingEntry));
+    self->pend_count = 0;
+
+    // the book may be mutated by any comparison or hash below so hold the refs
+    PyObject *old = Py_NewRef(self->keys);
+    PyObject *data = Py_NewRef(self->data);
+    PyObject *inserts = NULL;
+    PyObject *deletes = NULL;
+    PyObject *result = NULL;
+    Py_ssize_t ins_pos[SD_PENDING_MAX];
+    Py_ssize_t del_pos[SD_PENDING_MAX];
+    // only place status can be set to -1, so any exception/error will trigger this ret value
+    int status = -1;
+
+    inserts = PyList_New(0);
+    deletes = PyList_New(0);
+    if (EXPECT(!inserts || !deletes, 0)) {
+        goto done;
     }
 
-    Py_XSETREF(self->keys, ret);
-    self->dirty = false;
+    if (count == 1) {
+        if (EXPECT(PyList_Append(pend[0].op == PENDING_INSERT ? inserts : deletes, pend[0].key) < 0, 0)) {
+            goto done;
+        }
+    } else {
+        PyObject *seen = PyDict_New();
+        if (EXPECT(!seen, 0)) {
+            goto done;
+        }
 
-    return 0;
+        int failed = 0;
+        for (Py_ssize_t i = 0; i < count && !failed; ++i) {
+            PyObject *packed = PyDict_GetItemWithError(seen, pend[i].key);
+            long state;
+
+            if (packed) {
+                state = PyLong_AsLong(packed) ^ 1;
+            } else if (EXPECT(PyErr_Occurred() != NULL, 0)) {
+                failed = 1;
+                break;
+            } else {
+                state = ((long)pend[i].op << 1) | 1;
+            }
+
+            packed = PyLong_FromLong(state);
+            if (EXPECT(!packed, 0)) {
+                failed = 1;
+                break;
+            }
+
+            failed = PyDict_SetItem(seen, pend[i].key, packed) < 0;
+            Py_DECREF(packed);
+        }
+
+        if (!failed) {
+            PyObject *key;
+            PyObject *packed;
+            Py_ssize_t pos = 0;
+
+            while (PyDict_Next(seen, &pos, &key, &packed)) {
+                long state = PyLong_AsLong(packed);
+
+                if ((state & 1) == 0) {
+                    continue;
+                }
+
+                if (EXPECT(PyList_Append((state >> 1) == PENDING_INSERT ? inserts : deletes, key) < 0, 0)) {
+                    failed = 1;
+                    break;
+                }
+            }
+        }
+
+        Py_DECREF(seen);
+        if (EXPECT(failed, 0)) {
+            goto done;
+        }
+    }
+
+    Py_ssize_t num_ins = PyList_GET_SIZE(inserts);
+    Py_ssize_t num_del = PyList_GET_SIZE(deletes);
+
+    if (num_ins == 0 && num_del == 0) {
+        if (EXPECT(self->version == version && self->pend_count == 0 && !self->dirty, 1)) {
+            status = 0;
+        } else {
+            status = 1;
+        }
+        goto done;
+    }
+
+    if (EXPECT(PyList_Sort(inserts) < 0, 0)) {
+        goto done;
+    }
+    if (self->ordering == DESCENDING) {
+        if (EXPECT(PyList_Reverse(inserts) < 0, 0)) {
+            goto done;
+        }
+    }
+
+    Py_ssize_t old_size = PyTuple_GET_SIZE(old);
+
+    for (Py_ssize_t i = 0; i < num_del; ++i) {
+        Py_ssize_t at = keys_bisect(old, PyList_GET_ITEM(deletes, i), self->ordering);
+        if (EXPECT(at < 0, 0)) {
+            goto done;
+        }
+
+        if (EXPECT(at == old_size, 0)) {
+            status = 1;
+            goto done;
+        }
+
+        int eq = PyObject_RichCompareBool(PyTuple_GET_ITEM(old, at), PyList_GET_ITEM(deletes, i), Py_EQ);
+        if (EXPECT(eq < 0, 0)) {
+            goto done;
+        }
+
+        if (EXPECT(!eq, 0)) {
+            status = 1;
+            goto done;
+        }
+
+        del_pos[i] = at;
+    }
+
+    for (Py_ssize_t i = 1; i < num_del; ++i) {
+        Py_ssize_t value = del_pos[i];
+        Py_ssize_t j = i;
+        while (j > 0 && del_pos[j - 1] > value) {
+            del_pos[j] = del_pos[j - 1];
+            j--;
+        }
+        del_pos[j] = value;
+    }
+
+    for (Py_ssize_t i = 0; i < num_ins; ++i) {
+        Py_ssize_t at = keys_bisect(old, PyList_GET_ITEM(inserts, i), self->ordering);
+        if (EXPECT(at < 0, 0)) {
+            goto done;
+        }
+
+        if (at < old_size) {
+            int eq = PyObject_RichCompareBool(PyTuple_GET_ITEM(old, at), PyList_GET_ITEM(inserts, i), Py_EQ);
+            if (EXPECT(eq < 0, 0)) {
+                goto done;
+            }
+
+            if (EXPECT(eq, 0)) {
+                status = 1;
+                goto done;
+            }
+        }
+
+        ins_pos[i] = at;
+    }
+
+    result = PyTuple_New(old_size - num_del + num_ins);
+    if (EXPECT(!result, 0)) {
+        goto done;
+    }
+
+    Py_ssize_t ri = 0;
+    Py_ssize_t ii = 0;
+    Py_ssize_t di = 0;
+
+    for (Py_ssize_t oi = 0; oi <= old_size; ++oi) {
+        while (ii < num_ins && ins_pos[ii] == oi) {
+            PyTuple_SET_ITEM(result, ri++, Py_NewRef(PyList_GET_ITEM(inserts, ii)));
+            ii++;
+        }
+        if (oi == old_size) {
+            break;
+        }
+        if (di < num_del && del_pos[di] == oi) {
+            di++;
+            continue;
+        }
+        PyTuple_SET_ITEM(result, ri++, Py_NewRef(PyTuple_GET_ITEM(old, oi)));
+    }
+
+    if (EXPECT(self->version != version || self->pend_count != 0 || self->dirty, 0)
+            || EXPECT(ri != old_size - num_del + num_ins, 0)
+            || EXPECT(ri != PyDict_GET_SIZE(data), 0)) {
+        status = 1;
+        goto done;
+    }
+
+    Py_XSETREF(self->keys, result);
+    result = NULL;
+    status = 0;
+
+done:
+    if (status != 0) {
+        // both paths need the dirty bit set
+        escalate_to_dirty(self);
+    }
+
+    Py_XDECREF(result);
+    Py_XDECREF(inserts);
+    Py_XDECREF(deletes);
+    Py_DECREF(old);
+    Py_DECREF(data);
+    for (Py_ssize_t i = 0; i < count; ++i) {
+        Py_DECREF(pend[i].key);
+    }
+    return status;
+}
+
+
+/* internal helper function to update keys */
+inline int update_keys(SortedDict *self) {
+    if (!self->dirty && self->keys) {
+        if (self->pend_count == 0) {
+            return 0;
+        }
+
+        int applied = apply_pending(self);
+        if (applied == 0) {
+            return 0;
+        }
+        if (applied < 0) {
+            return 1;
+        }
+        // the log escalated, fall through to the full sort
+    }
+
+    return full_sort(self);
 }
 
 
@@ -465,40 +777,46 @@ PyObject* SortedDict_tolist(SortedDict *self, PyObject *Py_UNUSED(ignored))
 
 static int truncate_to_depth(SortedDict *self)
 {
-    if (self->depth) {
-        if (EXPECT(update_keys(self), 0)) {
-            return -1;
-        }
+    if (!self->depth) {
+        return 0;
+    }
 
-        PyObject *delete = PySequence_GetSlice(self->keys, self->depth, PyDict_Size(self->data));
-        if (EXPECT(!delete, 0)) {
-            return -1;
-        }
+    if (EXPECT(update_keys(self), 0)) {
+        return -1;
+    }
 
-        Py_ssize_t len = PySequence_Length(delete);
-        if (EXPECT(len == -1, 0)) {
-            Py_DECREF(delete);
-            return -1;
-        }
+    Py_ssize_t size = PyTuple_GET_SIZE(self->keys);
+    if (size <= self->depth) {
+        return 0;
+    }
 
-        for (Py_ssize_t i = 0; i < len; ++i) {
-            if (EXPECT(PyDict_DelItem(self->data, PySequence_Fast_GET_ITEM(delete, i)) == -1, 0)) {
-                Py_DECREF(delete);
-                return -1;
-            }
-        }
-        Py_DECREF(delete);
+    uint64_t version = self->version;
+    PyObject *keys = Py_NewRef(self->keys);
 
-        if (len > 0) {
-            self->dirty = true;
-        }
-
-        if (EXPECT(update_keys(self), 0)) {
+    for (Py_ssize_t i = self->depth; i < size; ++i) {
+        if (EXPECT(PyDict_DelItem(self->data, PyTuple_GET_ITEM(keys, i)) == -1, 0)) {
+            escalate_to_dirty(self);
+            Py_DECREF(keys);
             return -1;
         }
     }
 
-    return 0;
+    if (EXPECT(self->version == version, 1)) {
+        // evictions only come off the tail
+        PyObject *sliced = PyTuple_GetSlice(keys, 0, self->depth);
+        Py_DECREF(keys);
+        if (EXPECT(!sliced, 0)) {
+            escalate_to_dirty(self);
+            return -1;
+        }
+        Py_XSETREF(self->keys, sliced);
+        return 0;
+    }
+
+    // a re-entrant mutation interleaved with the eviction, recompute
+    Py_DECREF(keys);
+    escalate_to_dirty(self);
+    return update_keys(self) ? -1 : 0;
 }
 
 
@@ -540,6 +858,9 @@ PyObject *SortedDict_getitem(SortedDict *self, PyObject *key)
 
 int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
 {
+    bool cache_live = (!self->dirty && self->keys != NULL);
+    uint64_t version = self->version;
+
     if (value) {
         Py_ssize_t before = PyDict_GET_SIZE(self->data);
         int ret = PyDict_SetItem(self->data, key, value);
@@ -548,23 +869,42 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
             return ret;
         }
 
-        if (PyDict_GET_SIZE(self->data) != before) {
-            // if we did add a new key, set to dirty, truncate
-            self->dirty = true;
+        if (PyDict_GET_SIZE(self->data) == before && self->version == version) {
+            // in place value update, the key set did not change
+            return ret;
+        }
 
-            if (EXPECT(self->truncate && truncate_to_depth(self), 0)) {
-                return -1;
-            }
+        if (!cache_live) {
+            self->dirty = true;
+            self->version++;
+        } else if (PyDict_GET_SIZE(self->data) == before + 1 && self->version == version) {
+            log_append(self, PENDING_INSERT, key);
+        } else {
+            escalate_to_dirty(self);
+        }
+
+        if (EXPECT(self->truncate && truncate_to_depth(self), 0)) {
+            return -1;
         }
 
         return ret;
     } else {
         // setitem also called for del (value will be null for deletes)
         int ret = PyDict_DelItem(self->data, key);
-        if (ret == 0) {
-            // only mark dirty if key was actually deleted
-            self->dirty = true;
+        if (ret != 0) {
+            // a failed delete leaves the cache and log untouched
+            return ret;
         }
+
+        if (!cache_live) {
+            self->dirty = true;
+            self->version++;
+        } else if (self->version == version) {
+            log_append(self, PENDING_DELETE, key);
+        } else {
+            escalate_to_dirty(self);
+        }
+
         return ret;
     }
 }

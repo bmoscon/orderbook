@@ -22,14 +22,33 @@ enum Ordering {
     INVALID_ORDERING
 };
 
+
+// pending key changes tracked. once the limit is hit, full sort of the cache
+#define SD_PENDING_MAX 64
+
+// changes to the keys are either inserts or deletes
+enum PendingOp {
+    PENDING_INSERT,
+    PENDING_DELETE
+};
+
+typedef struct {
+    PyObject *key;   // strong ref
+    uint8_t op;
+} PendingEntry;
+
 typedef struct {
     PyObject_HEAD
     PyObject *data;
     PyObject *keys;
+    uint64_t version;
     enum Ordering ordering;
     int depth;
+    uint16_t pend_count;
     bool truncate;
+    // set when only a full re-sort can rebuild the cache. changes that are pended are should not toggle
     bool dirty;
+    PendingEntry pend[SD_PENDING_MAX];
 } SortedDict;
 
 
@@ -125,6 +144,7 @@ static PyTypeObject SortedDictType = {
 
 /* helpers */
 int update_keys(SortedDict *self);
+void SortedDict_flush_pending(SortedDict *self);
 
 
 #endif
