@@ -242,35 +242,33 @@ Note that it rebuilds `.venv` with an instrumented, unoptimized-for-timing build
 
 
 
-### Running the performance tests
+### Performance
 
-You can run the performance tests like so: `uv run perf/performance_test.py`. The program will profile the time to run for random data samples of various sizes as well as the construction of a sorted orderbook using live L2 orderbook data from Coinbase.
+[`perf/performance_test.py`](perf/performance_test.py) replays realistic exchange activity against real BTC-USD order books captured from Coinbase and cached in [`perf/data/`](perf/data/), so runs are reproducible and need no network access. The event streams are generated deterministically from a seed and modeled on how feeds actually behave: 90% of activity clusters near the top of book and the rest spreads across the whole window, L2 traffic is mostly size updates with level adds and deletes held in balance so depth stays stationary, L3 traffic is order-level against the book's real resting orders with adds and cancels likewise balanced.
 
-The performance of constructing a sorted orderbook (using live data from Coinbase) using this C library, versus a pure Python sorted dictionary library:
+```
+uv run perf/performance_test.py                       # everything
+uv run perf/performance_test.py --scenario l3         # one scenario
+uv run perf/performance_test.py --ops 1000000 --depth 5000 --seed 7
+uv run perf/capture.py                                # refresh the cached snapshots
+```
 
+Numbers below are from Python 3.14, a replay window of the top 2,000 levels per side, a top-of-book read every 10 events, 200,000 events (20,000 for the pure Python book, which only degrades further the longer it runs). Throughput is the median of 5 passes.
 
-| Library        | Time, in seconds |
-| ---------------| ---------------- |
-| C Library      | 0.01547479629517 |
-| Python Library | 0.02890801429749 |
+**L3 replay** — a per-order add/remove stream against the book's real resting orders:
 
-The performance of constructing sorted dictionaries using the same libraries, as well as the cost of building unsorted, python dictionaies for dictionaries of random floating point data:
+| library | ns/event | throughput |
+| ------- | -------- | ---------- |
+| order_book | **280** | **3.6M events/s** |
+| sortedcontainers | 409 | 2.4M events/s |
+| pure python | 2,896 | 345K events/s |
 
+**Snapshot load** — build a sorted book from the full 45,393-level snapshot and export it:
 
-| Library        | Number of Keys | Time, in seconds |
-| -------------- | -------------- | ---------------- |
-| C Library      |     100        | 0.00002408027649 |
-| Python Library |     100        | 0.00004816055298 |
-| Python Dict    |     100        | 0.00002312660217 |
-| C Library      |     500        | 0.00014019012451 |
-| Python Library |     500        | 0.00027227401733 |
-| Python Dict    |     500        | 0.00012207031250 |
-| C Library      |     1000       | 0.00029301643372 |
-| Python Library |     1000       | 0.00055193901062 |
-| Python Dict    |     1000       | 0.00024676322937 |
+| library | time |
+| ------- | ---- |
+| order_book | **3.6 ms** |
+| sortedcontainers | 25.2 ms |
+| pure python | 5.6 ms |
 
-
-This represents a roughly 2x speedup compared to a pure python implementation, and in many cases is close to the performance of an unsorted python dictionary.
-
-
-For other performance metrics, run `performance_test.py` as well as the other performance tests in [`perf/`](perf/)
+**Exchange checksums** on the real book: KRAKEN 2.5 µs, OKX 6.2 µs, BITGET 5.8 µs per `checksum()`.

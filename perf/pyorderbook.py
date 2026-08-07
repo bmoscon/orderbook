@@ -5,81 +5,66 @@ Please see the LICENSE file for the terms and conditions
 associated with this software.
 
 
-This class is functionally equivalent to the C class (for the basic use cases). It is used for performance comparisons only
+A pure Python order book, functionally equivalent to the C extension for performance testing
 '''
 
 
+class SortedDict:
+    def __init__(self, ordering='DESC'):
+        if ordering not in {'ASC', 'DESC'}:
+            raise ValueError('Ordering must be one of ASC or DESC')
+        self._ordering = ordering
+        self._data = {}
+        self._keys = None
+
+    def _sorted_keys(self):
+        if self._keys is None:
+            self._keys = sorted(self._data, reverse=self._ordering == 'DESC')
+        return self._keys
+
+    def __setitem__(self, key, value):
+        if key not in self._data:
+            self._keys = None
+        self._data[key] = value
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __delitem__(self, key):
+        del self._data[key]
+        self._keys = None
+
+    def __contains__(self, key):
+        return key in self._data
+
+    def __len__(self):
+        return len(self._data)
+
+    def __iter__(self):
+        return iter(self._sorted_keys())
+
+    def keys(self):
+        return list(self._sorted_keys())
+
+    def index(self, idx):
+        key = self._sorted_keys()[idx]
+        return key, self._data[key]
+
+    def to_dict(self):
+        return {key: self._data[key] for key in self._sorted_keys()}
+
+
 class OrderBook:
-    def __init__(self, max_depth=None, truncate=None):
-        self.__bids = SortedDict(ordering='DESC')
-        self.__asks = SortedDict(ordering='ASC')
+    def __init__(self):
+        self.bids = SortedDict(ordering='DESC')
+        self.asks = SortedDict(ordering='ASC')
 
     def __getitem__(self, key):
         if key in {'bid', 'bids', 'BID', 'BIDS'}:
-            return self.__bids
-        elif key in {'ask', 'asks', 'ASK', 'ASKS'}:
-            return self.__asks
-
-    def __getattr__(self, attr):
-        if attr in {'bid', 'bids', 'BID', 'BIDS'}:
-            return self.__bids
-        elif attr in {'ask', 'asks', 'ASK', 'ASKS'}:
-            return self.__asks
+            return self.bids
+        if key in {'ask', 'asks', 'ASK', 'ASKS'}:
+            return self.asks
+        raise KeyError(key)
 
     def to_dict(self):
-        ret = {}
-        ret['bids'] = {bid: self.__bids[bid] for bid in self.__bids}
-        ret['asks'] = {ask: self.__asks[ask] for ask in self.__asks}
-        return ret
-
-
-class SortedDict:
-    def __init__(self, *args, ordering='DESC'):
-        self.ordering = ordering
-        self.data = {}
-        self.position = 0
-        self.__keys = None
-        self.__dirty = False
-
-        if len(args):
-            if len(args > 1):
-                raise ValueError('SortedDict only takes a single positional argument')
-            if not isinstance(args[0], dict):
-                raise ValueError('SortedDict only takes a dictionary as a positional argument')
-
-            self.data = dict(args[0])
-
-        if ordering not in {'ASC', 'DESC'}:
-            raise ValueError('Ordering must be one of ASC or DESC')
-
-    def __update_key_cache(self):
-        if self.__dirty or self.__keys is None:
-            keys = sorted(self.data.keys(), reverse=self.ordering == 'DESC')
-            self.__keys = keys
-            self.__dirty = False
-
-    def keys(self):
-        self.__update_key_cache()
-        return list(self.__keys)
-
-    def __setitem__(self, key, value):
-        self.dirty = True
-        self.data[key] = value
-
-    def __getitem__(self, key):
-        return self.data[key]
-
-    def __delitem__(self, key):
-        self.dirty = True
-        del self.data[key]
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        self.__update_key_cache()
-        while self.position < len(self.__keys):
-            ret = self.__keys[self.position]
-            self.position += 1
-            return ret
-        raise StopIteration
+        return {'bid': self.bids.to_dict(), 'ask': self.asks.to_dict()}

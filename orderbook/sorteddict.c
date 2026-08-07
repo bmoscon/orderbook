@@ -446,10 +446,35 @@ static int apply_pending(SortedDict *self)
         ins_pos[i] = at;
     }
 
-    result = PyTuple_New(old_size - num_del + num_ins);
+    Py_ssize_t new_size = old_size - num_del + num_ins;
+
+    result = PyTuple_New(new_size);
     if (EXPECT(!result, 0)) {
         goto done;
     }
+
+    if (EXPECT(self->version != version || self->pend_count != 0 || self->dirty, 0)
+            || EXPECT(new_size != PyDict_GET_SIZE(data), 0)) {
+        status = 1;
+        goto done;
+    }
+
+    for (Py_ssize_t i = 1; i < num_del; ++i) {
+        if (EXPECT(del_pos[i] <= del_pos[i - 1], 0)) {
+            status = 1;
+            goto done;
+        }
+    }
+    for (Py_ssize_t i = 1; i < num_ins; ++i) {
+        if (EXPECT(ins_pos[i] < ins_pos[i - 1], 0)) {
+            status = 1;
+            goto done;
+        }
+    }
+
+    // if only self holds the cache, move surviving keys to avoid extra
+    // refcount updates. otherwise copy and update refs
+    int steal = (self->keys == old) && (Py_REFCNT(old) == 2);
 
     Py_ssize_t ri = 0;
     Py_ssize_t ii = 0;
@@ -460,19 +485,31 @@ static int apply_pending(SortedDict *self)
             PyTuple_SET_ITEM(result, ri++, Py_NewRef(PyList_GET_ITEM(inserts, ii)));
             ii++;
         }
+
         if (oi == old_size) {
             break;
         }
+
         if (di < num_del && del_pos[di] == oi) {
             di++;
             continue;
         }
-        PyTuple_SET_ITEM(result, ri++, Py_NewRef(PyTuple_GET_ITEM(old, oi)));
+
+        PyObject *key = PyTuple_GET_ITEM(old, oi);
+        if (steal) {
+            PyTuple_SET_ITEM(old, oi, NULL);
+        } else {
+            Py_INCREF(key);
+        }
+
+        PyTuple_SET_ITEM(result, ri++, key);
     }
 
-    if (EXPECT(self->version != version || self->pend_count != 0 || self->dirty, 0)
-            || EXPECT(ri != old_size - num_del + num_ins, 0)
-            || EXPECT(ri != PyDict_GET_SIZE(data), 0)) {
+    if (EXPECT(ri != new_size, 0)) {
+        // should be unreachable given thechecks above, but here as a just in case
+        if (steal) {
+            Py_CLEAR(self->keys);
+        }
         status = 1;
         goto done;
     }
