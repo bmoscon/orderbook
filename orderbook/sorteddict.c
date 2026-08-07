@@ -365,6 +365,56 @@ PyObject* SortedDict_todict(SortedDict *self, PyObject *unused, PyObject *kwargs
         return NULL;
     }
 
+    if (!to) {
+        // no conversion requested so build the dict straight from data
+        if (EXPECT(update_keys(self), 0)) {
+            return NULL;
+        }
+
+        PyObject *keys = Py_NewRef(self->keys);
+        PyObject *data = Py_NewRef(self->data);
+
+        Py_ssize_t len = PyTuple_GET_SIZE(keys);
+        if ((self->depth > 0) && (self->depth < len)) {
+            len = self->depth;
+        }
+
+        PyObject *ret = PyDict_New();
+        if (EXPECT(!ret, 0)) {
+            goto error;
+        }
+
+        for (Py_ssize_t i = 0; i < len; ++i) {
+            PyObject *key = PyTuple_GET_ITEM(keys, i);
+            PyObject *value = PyDict_GetItemWithError(data, key);
+            if (EXPECT(!value, 0)) {
+                if (!PyErr_Occurred()) {
+                    PyErr_SetObject(PyExc_KeyError, key);
+                }
+                Py_DECREF(ret);
+                goto error;
+            }
+
+            Py_INCREF(value);
+            int failed = PyDict_SetItem(ret, key, value) < 0;
+            Py_DECREF(value);
+
+            if (EXPECT(failed, 0)) {
+                Py_DECREF(ret);
+                goto error;
+            }
+        }
+
+        Py_DECREF(keys);
+        Py_DECREF(data);
+        return ret;
+
+error:
+        Py_DECREF(keys);
+        Py_DECREF(data);
+        return NULL;
+    }
+
     PyObject *items = build_items(self);
     if (EXPECT(!items, 0)) {
         return NULL;
