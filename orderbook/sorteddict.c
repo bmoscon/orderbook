@@ -142,25 +142,19 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
                 return -1;
             }
 
-            PyObject *str = PyUnicode_AsEncodedString(ordering_arg, "UTF-8", "strict");
-            if (!str) {
+            const char *value = PyUnicode_AsUTF8(ordering_arg);
+            if (!value) {
                 return -1;
             }
 
-            const char *value = PyBytes_AsString(str);
-
-            if (value) {
-                if (strcmp(value, "DESC") == 0) {
-                    self->ordering = DESCENDING;
-                } else if (strcmp(value, "ASC") == 0) {
-                    self->ordering = ASCENDING;
-                } else {
-                    Py_DECREF(str);
-                    PyErr_SetString(PyExc_ValueError, "ordering must be one of ASC or DESC");
-                    return -1;
-                }
+            if (strcmp(value, "DESC") == 0) {
+                self->ordering = DESCENDING;
+            } else if (strcmp(value, "ASC") == 0) {
+                self->ordering = ASCENDING;
+            } else {
+                PyErr_SetString(PyExc_ValueError, "ordering must be one of ASC or DESC");
+                return -1;
             }
-            Py_DECREF(str);
         } else {
             // default is ascending
             self->ordering = ASCENDING;

@@ -249,19 +249,12 @@ PyObject *Orderbook_getitem(const Orderbook *self, PyObject *key)
         return NULL;
     }
 
-    PyObject *str = PyUnicode_AsEncodedString(key, "UTF-8", "strict");
-    if (EXPECT(!str, 0)) {
-        return NULL;
-    }
-
-    const char *name = PyBytes_AsString(str);
+    const char *name = PyUnicode_AsUTF8(key);
     if (EXPECT(!name, 0)) {
-        Py_DECREF(str);
         return NULL;
     }
 
     enum side_e key_int = check_key(name);
-    Py_DECREF(str);
 
     if (key_int == BID) {
         Py_INCREF(self->bids);
@@ -284,19 +277,12 @@ int Orderbook_setitem(const Orderbook *self, PyObject *key, PyObject *value)
         return -1;
     }
 
-    PyObject *str = PyUnicode_AsEncodedString(key, "UTF-8", "strict");
-    if (EXPECT(!str, 0)) {
-        return -1;
-    }
-
-    const char *name = PyBytes_AsString(str);
+    const char *name = PyUnicode_AsUTF8(key);
     if (EXPECT(!name, 0)) {
-        Py_DECREF(str);
         return -1;
     }
 
     enum side_e key_int = check_key(name);
-    Py_DECREF(str);
 
     if (EXPECT(key_int == INVALID_SIDE, 0)) {
         PyErr_SetString(PyExc_ValueError, "key must one of bid/ask");
