@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "order_book"
-version = "0.7.1"
+version = "1.0.0"
 description = "A fast orderbook implementation, in C, for Python"
 authors = [{name = "Bryant Moscon", email = "bmoscon@gmail.com"}]
 license = "GPL-3.0-or-later"
@@ -14,7 +14,7 @@ keywords = ["market data", "trading", "order book", "MBO", "L2", "L3", "LOB"]
 dynamic = ["readme"]
 classifiers = [
     "Intended Audience :: Developers",
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Programming Language :: C",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3.12",
