@@ -23,7 +23,7 @@ static void replace_side(SortedDict *side, PyObject *data)
 
     side->data = data;
     side->dirty = true;
-    Py_CLEAR(side->keys);
+    SortedDict_drop_key_cache(side);
     // flush before dropping previous - finalizers can reenter
     SortedDict_flush_pending(side);
 
@@ -167,18 +167,26 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
 /* Orderbook methods */
 PyObject* Orderbook_todict(const Orderbook *self, PyObject *unused, PyObject *kwargs)
 {
+    static char *kwlist[] = {"from_type", "to_type", NULL};
+    PyObject *from = NULL;
+    PyObject *to = NULL;
+
+    if (!PyArg_ParseTupleAndKeywords(unused, kwargs, "|$OO", kwlist, &from, &to)) {
+        return NULL;
+    }
+
     PyObject *ret = PyDict_New();
     if (EXPECT(!ret, 0)) {
         return NULL;
     }
 
-    PyObject *bids = SortedDict_todict(self->bids, unused, kwargs);
+    PyObject *bids = SortedDict_todict_impl(self->bids, from, to);
     if (EXPECT(!bids, 0)) {
         Py_DECREF(ret);
         return NULL;
     }
 
-    PyObject *asks = SortedDict_todict(self->asks, unused, kwargs);
+    PyObject *asks = SortedDict_todict_impl(self->asks, from, to);
     if (EXPECT(!asks, 0)) {
         Py_DECREF(bids);
         Py_DECREF(ret);
@@ -225,8 +233,6 @@ PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored)
     if (EXPECT(update_keys(self->asks), 0)) {
         return NULL;
     }
-
-    memset(self->checksum_buffer, 0, self->checksum_len);
 
     Orderbook *book = (Orderbook *)self;
     book->checksumming = true;
@@ -419,15 +425,10 @@ static int kraken_string_builder(PyObject *pydata, uint8_t *data, int *pos, int 
         return -1;
     }
 
-    PyObject* str = PyUnicode_AsEncodedString(repr, "UTF-8", "strict");
-    Py_DECREF(repr);
-    if (EXPECT(!str, 0)) {
-        return -1;
-    }
-
-    const char *string = PyBytes_AS_STRING(str);
+    // the utf8 view is cached on the str object
+    const char *string = PyUnicode_AsUTF8(repr);
     if (EXPECT(!string, 0)) {
-        Py_DECREF(str);
+        Py_DECREF(repr);
         return -1;
     }
 
@@ -445,7 +446,7 @@ static int kraken_string_builder(PyObject *pydata, uint8_t *data, int *pos, int 
                 continue;
             }
             if (EXPECT(*pos >= size, 0)) {
-                Py_DECREF(str);
+                Py_DECREF(repr);
                 return checksum_overflow();
             }
             data[(*pos)++] = *string;
@@ -453,7 +454,7 @@ static int kraken_string_builder(PyObject *pydata, uint8_t *data, int *pos, int 
         string++;
     }
 
-    Py_DECREF(str);
+    Py_DECREF(repr);
 
     return 0;
 }
@@ -466,13 +467,10 @@ typedef struct {
 } side_snapshot;
 
 
-static void snapshot_side(const SortedDict *side, Py_ssize_t limit, side_snapshot *snap)
+static int snapshot_side(SortedDict *side, Py_ssize_t limit, side_snapshot *snap)
 {
-    snap->keys = Py_NewRef(side->keys);
-    snap->contents = Py_NewRef(side->data);
-
     Py_ssize_t levels = SortedDict_len(side);
-    Py_ssize_t cached = PyTuple_GET_SIZE(snap->keys);
+    Py_ssize_t cached = side->k_len;
 
     if (levels > cached) {
         levels = cached;
@@ -482,7 +480,18 @@ static void snapshot_side(const SortedDict *side, Py_ssize_t limit, side_snapsho
         levels = limit;
     }
 
+    // copy only the window the checksum needs
+    snap->keys = SortedDict_key_window(side, levels);
+    if (EXPECT(!snap->keys, 0)) {
+        snap->contents = NULL;
+        snap->levels = 0;
+        return -1;
+    }
+
+    snap->contents = Py_NewRef(side->data);
     snap->levels = levels;
+
+    return 0;
 }
 
 
@@ -549,8 +558,14 @@ static PyObject* kraken_checksum(const Orderbook *ob)
 
     // 10 is the kraken defined number of price/size pairs to use from each side
     side_snapshot asks, bids;
-    snapshot_side(ob->asks, 10, &asks);
-    snapshot_side(ob->bids, 10, &bids);
+    if (EXPECT(snapshot_side(ob->asks, 10, &asks), 0)) {
+        return NULL;
+    }
+
+    if (EXPECT(snapshot_side(ob->bids, 10, &bids), 0)) {
+        release_side(&asks);
+        return NULL;
+    }
 
     PyObject *ret = NULL;
     int pos = 0;
@@ -573,14 +588,15 @@ done:
 }
 
 
-static int append_bytes(PyObject *str, uint8_t *data, int *pos, int size)
+// append the utf8 straight from the unicode object's cached utf8 view
+static int append_str(PyObject *repr, uint8_t *data, int *pos, int size)
 {
-    const char *string = PyBytes_AS_STRING(str);
+    Py_ssize_t len;
+    const char *string = PyUnicode_AsUTF8AndSize(repr, &len);
     if (EXPECT(!string, 0)) {
         return -1;
     }
 
-    Py_ssize_t len = PyBytes_GET_SIZE(str);
     if (EXPECT(len > size - *pos, 0)) {
         return checksum_overflow();
     }
@@ -599,15 +615,9 @@ static int str_string_builder(PyObject *pydata, uint8_t *data, int *pos, int siz
         return -1;
     }
 
-    PyObject* str = PyUnicode_AsEncodedString(repr, "UTF-8", "strict");
+    int ret = append_str(repr, data, pos, size);
+
     Py_DECREF(repr);
-    if (EXPECT(!str, 0)) {
-        return -1;
-    }
-
-    int ret = append_bytes(str, data, pos, size);
-
-    Py_DECREF(str);
 
     return ret;
 }
@@ -647,15 +657,9 @@ static int formatf_string_builder(PyObject *pydata, uint8_t *data, int *pos, int
         return -1;
     }
 
-    PyObject* str = PyUnicode_AsEncodedString(repr, "UTF-8", "strict");
+    int ret = append_str(repr, data, pos, size);
+
     Py_DECREF(repr);
-    if (EXPECT(!str, 0)) {
-        return -1;
-    }
-
-    int ret = append_bytes(str, data, pos, size);
-
-    Py_DECREF(str);
     return ret;
 }
 
@@ -747,8 +751,13 @@ static PyObject* alternating_checksum(const Orderbook *ob, const uint32_t depth,
     }
 
     side_snapshot bids, asks;
-    snapshot_side(ob->bids, -1, &bids);
-    snapshot_side(ob->asks, -1, &asks);
+    if (EXPECT(snapshot_side(ob->bids, -1, &bids), 0)) {
+        return NULL;
+    }
+    if (EXPECT(snapshot_side(ob->asks, -1, &asks), 0)) {
+        release_side(&bids);
+        return NULL;
+    }
 
     PyObject *ret = NULL;
     int pos = 0;

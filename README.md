@@ -255,20 +255,28 @@ uv run perf/capture.py                                # refresh the cached snaps
 
 Numbers below are from Python 3.14, a replay window of the top 2,000 levels per side, a top-of-book read every 10 events, 200,000 events (20,000 for the pure Python book, which only degrades further the longer it runs). Throughput is the median of 5 passes.
 
+**L2 replay** — a price-level set/delete stream against the real book:
+
+| library | ns/event | throughput |
+| ------- | -------- | ---------- |
+| order_book | **137** | **7.3M events/s** |
+| sortedcontainers | 314 | 3.2M events/s |
+| pure python | 5,676 | 176K events/s |
+
 **L3 replay** — a per-order add/remove stream against the book's real resting orders:
 
 | library | ns/event | throughput |
 | ------- | -------- | ---------- |
-| order_book | **280** | **3.6M events/s** |
-| sortedcontainers | 409 | 2.4M events/s |
-| pure python | 2,896 | 345K events/s |
+| order_book | **190** | **5.3M events/s** |
+| sortedcontainers | 416 | 2.4M events/s |
+| pure python | 2,839 | 352K events/s |
 
 **Snapshot load** — build a sorted book from the full 45,393-level snapshot and export it:
 
 | library | time |
 | ------- | ---- |
-| order_book | **3.6 ms** |
-| sortedcontainers | 25.2 ms |
-| pure python | 5.6 ms |
+| order_book | **3.8 ms** |
+| sortedcontainers | 25.4 ms |
+| pure python | 5.7 ms |
 
-**Exchange checksums** on the real book: KRAKEN 2.5 µs, OKX 6.2 µs, BITGET 5.8 µs per `checksum()`.
+**Exchange checksums** on the real book: KRAKEN 2.1 µs, OKX 4.8 µs, BITGET 4.4 µs per `checksum()`.

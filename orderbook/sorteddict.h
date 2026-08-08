@@ -40,7 +40,11 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     PyObject *data;
-    PyObject *keys;
+    // the sorted key cache: a plain array of owned refs. merges move pointers between arrays
+    PyObject **karr;
+    Py_ssize_t k_len;
+    // consumers that need immutable snapshot get this lazily built tuple of karr, cached until the key set changes
+    PyObject *keys_tuple;
     uint64_t version;
     enum Ordering ordering;
     int depth;
@@ -75,6 +79,7 @@ int SortedDict_clear(SortedDict *self);
 PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored));
 PyObject* SortedDict_index(SortedDict *self, PyObject *index);
 PyObject* SortedDict_todict(SortedDict *self, PyObject *unused, PyObject *kwargs);
+PyObject* SortedDict_todict_impl(SortedDict *self, PyObject *from, PyObject *to);
 PyObject* SortedDict_tolist(SortedDict *self, PyObject *Py_UNUSED(ignored));
 PyObject* SortedDict_items(SortedDict *self, PyObject *Py_UNUSED(ignored));
 PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored));
@@ -145,6 +150,8 @@ static PyTypeObject SortedDictType = {
 /* helpers */
 int update_keys(SortedDict *self);
 void SortedDict_flush_pending(SortedDict *self);
+void SortedDict_drop_key_cache(SortedDict *self);
+PyObject *SortedDict_key_window(SortedDict *self, Py_ssize_t want);
 
 
 #endif

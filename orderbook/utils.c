@@ -11,15 +11,18 @@ associated with this software.
 
 enum side_e check_key(const char *key)
 {
-    if (!strcmp(key, "bid") || !strcmp(key, "BID") || !strcmp(key, "bids") || !strcmp(key, "BIDS")) {
-        return BID;
+    switch (key[0]) {
+        case 'b':
+            return (!strcmp(key + 1, "id") || !strcmp(key + 1, "ids")) ? BID : INVALID_SIDE;
+        case 'B':
+            return (!strcmp(key + 1, "ID") || !strcmp(key + 1, "IDS")) ? BID : INVALID_SIDE;
+        case 'a':
+            return (!strcmp(key + 1, "sk") || !strcmp(key + 1, "sks")) ? ASK : INVALID_SIDE;
+        case 'A':
+            return (!strcmp(key + 1, "SK") || !strcmp(key + 1, "SKS")) ? ASK : INVALID_SIDE;
+        default:
+            return INVALID_SIDE;
     }
-
-    if (!strcmp(key, "ask") || !strcmp(key, "ASK") || !strcmp(key, "asks") || !strcmp(key, "ASKS")) {
-        return ASK;
-    }
-
-    return INVALID_SIDE;
 }
 
 
