@@ -168,7 +168,7 @@ except KeyError:
 
 Several exchanges publish a CRC32 checksum of the top of book so clients can detect a desynchronized book. Construct the book with `checksum_format` set to the exchange, then compare `ob.checksum()` against the value the exchange sent.
 
-Supported formats: `KRAKEN`, `OKX` (and its alias `OKCOIN`), and `BITGET`.
+Supported formats: `KRAKEN`, `OKX`/`OKCOIN`, `BITGET`, and `BITFINEX`.
 
 ```python
 from decimal import Decimal
@@ -255,7 +255,7 @@ uv run perf/capture.py                                # refresh the cached snaps
 
 Numbers below are from Python 3.14, a replay window of the top 2,000 levels per side, a top-of-book read every 10 events, 200,000 events (20,000 for the pure Python book, which only degrades further the longer it runs). Throughput is the median of 5 passes.
 
-**L2 replay** — a price-level set/delete stream against the real book:
+**L2 replay**
 
 | library | ns/event | throughput |
 | ------- | -------- | ---------- |
@@ -263,7 +263,7 @@ Numbers below are from Python 3.14, a replay window of the top 2,000 levels per 
 | sortedcontainers | 314 | 3.2M events/s |
 | pure python | 5,676 | 176K events/s |
 
-**L3 replay** — a per-order add/remove stream against the book's real resting orders:
+**L3 replay**
 
 | library | ns/event | throughput |
 | ------- | -------- | ---------- |
@@ -271,7 +271,7 @@ Numbers below are from Python 3.14, a replay window of the top 2,000 levels per 
 | sortedcontainers | 416 | 2.4M events/s |
 | pure python | 2,839 | 352K events/s |
 
-**Snapshot load** — build a sorted book from the full 45,393-level snapshot and export it:
+**Snapshot load**
 
 | library | time |
 | ------- | ---- |
@@ -279,4 +279,4 @@ Numbers below are from Python 3.14, a replay window of the top 2,000 levels per 
 | sortedcontainers | 25.4 ms |
 | pure python | 5.7 ms |
 
-**Exchange checksums** on the real book: KRAKEN 2.1 µs, OKX 4.8 µs, BITGET 4.4 µs per `checksum()`.
+**Exchange checksums** on the real book: KRAKEN 1.9 µs, OKX 4.6 µs, BITGET 4.3 µs, BITFINEX 4.3 µs per `checksum()`.

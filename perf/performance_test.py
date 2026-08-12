@@ -556,7 +556,7 @@ def time_build(build, repeats=5):
 
 def run_checksums(snap):
     results = {}
-    for fmt, depth in (('KRAKEN', 10), ('OKX', 25), ('BITGET', 25)):
+    for fmt, depth in (('KRAKEN', 10), ('OKX', 25), ('BITGET', 25), ('BITFINEX', 25)):
         ob = OrderBook(checksum_format=fmt)
         for p, s, _ in snap['bids'][:depth]:
             ob.bids[Decimal(p)] = Decimal(s)

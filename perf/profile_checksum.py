@@ -259,6 +259,22 @@ def bitget_checksum(book):
     return zlib.crc32(combined.encode())
 
 
+def bitfinex_checksum(book):
+    n = 25
+
+    def fmt(x):
+        out = str(x)
+        if 'E-' in out:
+            return out.replace('E', 'e')
+        return format(x, 'f') if 'E' in out else out
+
+    bids = [f"{fmt(price)}:{fmt(book.bids[price])}" for price in list(book.bids)[:n]]
+    asks = [f"{fmt(price)}:-{fmt(book.asks[price])}" for price in list(book.asks)[:n]]
+
+    combined = ":".join([x for x in chain(*zip_longest(bids, asks)) if x is not None])
+    return zlib.crc32(combined.encode())
+
+
 def compare(fmt, reference, n=1000):
     print(fmt)
 
@@ -284,6 +300,7 @@ def main():
     compare('FTX', ftx_checksum)
     compare('OKX', okx_checksum)
     compare('BITGET', bitget_checksum)
+    compare('BITFINEX', bitfinex_checksum)
 
 
 if __name__ == '__main__':

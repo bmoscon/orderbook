@@ -23,6 +23,7 @@ enum Checksums {
     FTX,
     OKX,
     BITGET,
+    BITFINEX,
     INVALID_CHECKSUM_FORMAT
 };
 
@@ -53,7 +54,6 @@ PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored)
 Py_ssize_t Orderbook_len(const Orderbook *self);
 PyObject *Orderbook_getitem(const Orderbook *self, PyObject *key);
 int Orderbook_setitem(const Orderbook *self, PyObject *key, PyObject *value);
-
 int Orderbook_setattr(const PyObject *self, PyObject *attr, PyObject *value);
 
 

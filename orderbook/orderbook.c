@@ -127,6 +127,9 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
         } else if (strncmp(checksum_str.buf, "BITGET", checksum_str.len) == 0) {
             format = BITGET;
             buffer_len = 4096;
+        } else if (strncmp(checksum_str.buf, "BITFINEX", checksum_str.len) == 0) {
+            format = BITFINEX;
+            buffer_len = 4096;
         } else {
             PyBuffer_Release(&checksum_str);
             PyErr_SetString(PyExc_TypeError, "invalid checksum format specified");
@@ -703,8 +706,31 @@ static int ftx_string_builder(PyObject *pydata, uint8_t *data, int *pos, int siz
 }
 
 
+static int bitfinex_string_builder(PyObject *pydata, uint8_t *data, int *pos, int size)
+{
+    int startpos = *pos;
+    if (EXPECT(str_string_builder(pydata, data, pos, size), 0)) {
+        return -1;
+    }
+
+    uint8_t *exponent = memchr(&data[startpos], 'E', *pos - startpos);
+    if (EXPECT(exponent != NULL, 0)) {
+        if (exponent + 1 < &data[*pos] && exponent[1] == '-') {
+            *exponent = 'e';
+        } else {
+            *pos = startpos;
+            if (EXPECT(formatf_string_builder(pydata, data, pos, size), 0)) {
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+
 // append one price/size pair followed by the separator
-static int append_level(const side_snapshot *snap, Py_ssize_t index, uint8_t *data, int *pos, int size, char separator, string_builder_t string_builder)
+static int append_level(const side_snapshot *snap, Py_ssize_t index, uint8_t *data, int *pos, int size, char separator, string_builder_t string_builder, bool negate_amount)
 {
     PyObject *price = NULL;
     PyObject *amount = NULL;
@@ -723,6 +749,15 @@ static int append_level(const side_snapshot *snap, Py_ssize_t index, uint8_t *da
         goto done;
     }
     data[(*pos)++] = separator;
+
+    // Bitfinex checksums the wire amount, which is negative on the ask side
+    if (negate_amount) {
+        if (EXPECT(*pos >= size, 0)) {
+            checksum_overflow();
+            goto done;
+        }
+        data[(*pos)++] = '-';
+    }
 
     if (EXPECT(string_builder(amount, data, pos, size), 0)) {
         goto done;
@@ -743,43 +778,38 @@ done:
 }
 
 
-static PyObject* alternating_checksum(const Orderbook *ob, const uint32_t depth, char separator, string_builder_t string_builder)
+// build the interleaved string, and report the length to hash
+static int build_alternating(const Orderbook *ob, const uint32_t depth, char separator, string_builder_t string_builder, bool signed_asks, int *length)
 {
-    if (EXPECT(ob->max_depth && ob->max_depth < depth, 0)) {
-        PyErr_SetString(PyExc_ValueError, "Max depth is less than minimum number of levels for checksum");
-        return NULL;
-    }
-
     side_snapshot bids, asks;
     if (EXPECT(snapshot_side(ob->bids, -1, &bids), 0)) {
-        return NULL;
+        return -1;
     }
     if (EXPECT(snapshot_side(ob->asks, -1, &asks), 0)) {
         release_side(&bids);
-        return NULL;
+        return -1;
     }
 
-    PyObject *ret = NULL;
+    int ret = -1;
     int pos = 0;
     int buffer_len = ob->checksum_len;
 
     for(uint32_t i = 0; i < depth; ++i) {
         if ((Py_ssize_t)i < bids.levels) {
-            if (EXPECT(append_level(&bids, i, ob->checksum_buffer, &pos, buffer_len, separator, string_builder), 0)) {
+            if (EXPECT(append_level(&bids, i, ob->checksum_buffer, &pos, buffer_len, separator, string_builder, false), 0)) {
                 goto done;
             }
         }
 
         if ((Py_ssize_t)i < asks.levels) {
-            if (EXPECT(append_level(&asks, i, ob->checksum_buffer, &pos, buffer_len, separator, string_builder), 0)) {
+            if (EXPECT(append_level(&asks, i, ob->checksum_buffer, &pos, buffer_len, separator, string_builder, signed_asks), 0)) {
                 goto done;
             }
         }
     }
 
-    int len = (pos > 0) ? pos - 1 : 0;
-
-    ret = PyLong_FromUnsignedLong(crc32(ob->checksum_buffer, len));
+    *length = (pos > 0) ? pos - 1 : 0;
+    ret = 0;
 
 done:
     release_side(&asks);
@@ -789,17 +819,72 @@ done:
 }
 
 
+static PyObject* alternating_checksum(const Orderbook *ob, const uint32_t depth, char separator, string_builder_t string_builder, bool signed_asks)
+{
+    if (EXPECT(ob->max_depth && ob->max_depth < depth, 0)) {
+        PyErr_SetString(PyExc_ValueError, "Max depth is less than minimum number of levels for checksum");
+        return NULL;
+    }
+
+    int length;
+    if (EXPECT(build_alternating(ob, depth, separator, string_builder, signed_asks, &length), 0)) {
+        return NULL;
+    }
+
+    return PyLong_FromUnsignedLong(crc32(ob->checksum_buffer, length));
+}
+
+
+static bool bitfinex_rerender_needed(uint8_t *data, int length)
+{
+    uint8_t *end = data + length;
+
+    for (uint8_t *at = data; (at = memchr(at, 'E', end - at)); at++) {
+        if (at + 1 >= end || at[1] != '-') {
+            return true;
+        }
+        *at = 'e';
+    }
+
+    return false;
+}
+
+
+static PyObject* bitfinex_checksum(const Orderbook *ob)
+{
+    if (EXPECT(ob->max_depth && ob->max_depth < 25, 0)) {
+        PyErr_SetString(PyExc_ValueError, "Max depth is less than minimum number of levels for checksum");
+        return NULL;
+    }
+
+    int length;
+    if (EXPECT(build_alternating(ob, 25, ':', str_string_builder, true, &length), 0)) {
+        return NULL;
+    }
+
+    if (EXPECT(bitfinex_rerender_needed(ob->checksum_buffer, length), 0)) {
+        if (EXPECT(build_alternating(ob, 25, ':', bitfinex_string_builder, true, &length), 0)) {
+            return NULL;
+        }
+    }
+
+    return PyLong_FromUnsignedLong(crc32(ob->checksum_buffer, length));
+}
+
+
 static PyObject* calculate_checksum(const Orderbook *ob)
 {
     switch (ob->checksum) {
         case KRAKEN:
             return kraken_checksum(ob);
         case FTX:
-            return alternating_checksum(ob, 100, ':', ftx_string_builder);
+            return alternating_checksum(ob, 100, ':', ftx_string_builder, false);
         case OKX:
-            return alternating_checksum(ob, 25, ':', okx_string_builder);
+            return alternating_checksum(ob, 25, ':', okx_string_builder, false);
         case BITGET:
-            return alternating_checksum(ob, 25, ':', str_string_builder);
+            return alternating_checksum(ob, 25, ':', str_string_builder, false);
+        case BITFINEX:
+            return bitfinex_checksum(ob);
         default:
             return NULL;
     }
