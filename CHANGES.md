@@ -1,6 +1,6 @@
 ## Changelog
 
-### 1.0.1
+### 1.0.1 (2026-08-13)
  * Feature: Bitfinex checksum support
 
 ### 1.0.0 (2026-08-07)
