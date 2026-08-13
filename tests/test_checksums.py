@@ -686,7 +686,7 @@ def test_bitfinex_checksum():
 
     assert ob.checksum() == 3076707662
 
-    
+
     ob = OrderBook(checksum_format='BITFINEX')
     asks = [
         ["70000", "0.05670774"],
