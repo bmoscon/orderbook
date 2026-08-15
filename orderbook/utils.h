@@ -21,7 +21,7 @@ enum side_e {
 
 
 enum side_e check_key(const char *key);
-int crc32_init(void);
-uint32_t crc32(const uint8_t *data, size_t len);
+int crc32_orderbook_init(void);
+uint32_t crc32_orderbook(const uint8_t *data, size_t len);
 
 #endif

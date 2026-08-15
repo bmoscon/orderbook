@@ -554,24 +554,38 @@ def time_build(build, repeats=5):
 
 # checksums
 
-def run_checksums(snap):
+def time_checksum(ob):
+    ob.checksum()
+    samples = []
+    for _ in range(TP_PASSES):
+        gc.disable()
+        t0 = perf_counter_ns()
+        for _ in range(20_000):
+            ob.checksum()
+        samples.append((perf_counter_ns() - t0) / 20_000)
+        gc.enable()
+    return statistics.median(samples)
+
+
+def run_checksums(l2_snap, l3_snap):
     results = {}
     for fmt, depth in (('KRAKEN', 10), ('OKX', 25), ('BITGET', 25), ('BITFINEX', 25)):
         ob = OrderBook(checksum_format=fmt)
-        for p, s, _ in snap['bids'][:depth]:
+        for p, s, _ in l2_snap['bids'][:depth]:
             ob.bids[Decimal(p)] = Decimal(s)
-        for p, s, _ in snap['asks'][:depth]:
+        for p, s, _ in l2_snap['asks'][:depth]:
             ob.asks[Decimal(p)] = Decimal(s)
-        ob.checksum()
-        samples = []
-        for _ in range(TP_PASSES):
-            gc.disable()
-            t0 = perf_counter_ns()
-            for _ in range(20_000):
-                ob.checksum()
-            samples.append((perf_counter_ns() - t0) / 20_000)
-            gc.enable()
-        results[fmt] = statistics.median(samples)
+        results[fmt] = time_checksum(ob)
+
+    ob = OrderBook(checksum_format='BITFINEX')
+    levels = l3_levels(l3_snap, 25)
+    order_id = 0
+    for side, name in ((ob.bids, 'bid'), (ob.asks, 'ask')):
+        for price, orders in levels[name]:
+            side[price] = {order_id + n: size for n, size in enumerate(orders.values())}
+            order_id += len(orders)
+    results['BITFINEX L3'] = time_checksum(ob)
+
     return results
 
 
@@ -636,7 +650,6 @@ def main():
         'seed': args.seed, 'ops': args.ops, 'python_ops': args.python_ops,
         'depth': args.depth, 'python': platform.python_version(),
         'machine': platform.machine(), 'timer_resolution_ns': resolution,
-        'so': sys.modules['order_book'].__file__,
     }}
 
     print(f'order_book real-data benchmark -- {l2_snap["product"]} snapshot '
@@ -690,7 +703,7 @@ def main():
         results['l3'] = dict(rows)
 
     if args.scenario in ('checksum', 'all'):
-        checksums = run_checksums(l2_snap)
+        checksums = run_checksums(l2_snap, l3_snap)
         print('\nexchange checksum on the real book (order_book only):')
         for fmt, ns in checksums.items():
             print(f'  {fmt:<18}{fmt_ns(ns):>12} per checksum()')

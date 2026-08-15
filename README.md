@@ -279,4 +279,6 @@ Numbers below are from Python 3.14, a replay window of the top 2,000 levels per 
 | sortedcontainers | 25.4 ms |
 | pure python | 5.7 ms |
 
-**Exchange checksums** on the real book: KRAKEN 1.9 µs, OKX 4.6 µs, BITGET 4.3 µs, BITFINEX 4.3 µs per `checksum()`.
+**Exchange checksums**
+L2 books: KRAKEN 1.9 µs, OKX 4.6 µs, BITGET 4.3 µs, BITFINEX 4.3 µs per `checksum()`
+L3 books: Bitfinex 5.3 µs per `checksum()`

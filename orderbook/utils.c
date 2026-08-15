@@ -32,18 +32,18 @@ CRC checksums for
   * arm64 without extension
   * x86-64 with PCLMULQDQ instruction
   * failure case. The above should cover most any hardware made within the last 10 years
-    note: crc32_init will return -1 when this is the case
+    note: crc32_orderbook_init will return -1 when this is the case
 */
 
 #if defined(__ARM_FEATURE_CRC32)
 #include <arm_acle.h>
 
-int crc32_init(void)
+int crc32_orderbook_init(void)
 {
     return 0;
 }
 
-uint32_t crc32(const uint8_t *data, size_t len)
+uint32_t crc32_orderbook(const uint8_t *data, size_t len)
 {
     uint32_t crc = 0xFFFFFFFF;
 
@@ -69,7 +69,7 @@ uint32_t crc32(const uint8_t *data, size_t len)
 #include <asm/hwcap.h>
 #endif
 
-int crc32_init(void)
+int crc32_orderbook_init(void)
 {
 #if defined(__linux__) && defined(HWCAP_CRC32)
     if (!(getauxval(AT_HWCAP) & HWCAP_CRC32)) {
@@ -84,7 +84,7 @@ __attribute__((target("crc")))
 #else
 __attribute__((target("+crc")))
 #endif
-uint32_t crc32(const uint8_t *data, size_t len)
+uint32_t crc32_orderbook(const uint8_t *data, size_t len)
 {
     uint32_t crc = 0xFFFFFFFF;
 
@@ -108,7 +108,7 @@ uint32_t crc32(const uint8_t *data, size_t len)
 // part of SSE4.1
 #include <immintrin.h>
 
-int crc32_init(void)
+int crc32_orderbook_init(void)
 {
     return (__builtin_cpu_supports("pclmul") && __builtin_cpu_supports("sse4.1")) ? 0 : -1;
 }
@@ -194,7 +194,7 @@ static uint32_t crc32_fold_pclmul(const uint8_t *data, size_t len, uint32_t crc)
     return (uint32_t)_mm_extract_epi32(x1, 1);
 }
 
-uint32_t crc32(const uint8_t *data, size_t len)
+uint32_t crc32_orderbook(const uint8_t *data, size_t len)
 {
     uint32_t crc = 0xFFFFFFFF;
 

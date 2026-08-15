@@ -1,5 +1,9 @@
 ## Changelog
 
+### 1.0.2
+ * Feature: Bitfinex checksum support for L3 books
+ * Bugfix: symbol collision between orderbook's crc32 and zlib's
+
 ### 1.0.1 (2026-08-13)
  * Feature: Bitfinex checksum support
 

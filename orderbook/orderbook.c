@@ -332,7 +332,7 @@ PyMODINIT_FUNC PyInit_order_book(void)
     PyObject *m;
     OrderBookModuleState *st;
 
-    if (crc32_init() != 0) {
+    if (crc32_orderbook_init() != 0) {
         PyErr_SetString(PyExc_ImportError, "orderbook requires CRC32 CPU support");
         return NULL;
     }
@@ -581,7 +581,7 @@ static PyObject* kraken_checksum(const Orderbook *ob)
         goto done;
     }
 
-    ret = PyLong_FromUnsignedLong(crc32(ob->checksum_buffer, pos));
+    ret = PyLong_FromUnsignedLong(crc32_orderbook(ob->checksum_buffer, pos));
 
 done:
     release_side(&bids);
@@ -729,19 +729,122 @@ static int bitfinex_string_builder(PyObject *pydata, uint8_t *data, int *pos, in
 }
 
 
-// append one price/size pair followed by the separator
-static int append_level(const side_snapshot *snap, Py_ssize_t index, uint8_t *data, int *pos, int size, char separator, string_builder_t string_builder, bool negate_amount)
-{
-    PyObject *price = NULL;
-    PyObject *amount = NULL;
+typedef struct {
+    const side_snapshot *snap;
+    PyObject *orders;
+    PyObject *amounts;
+    Py_ssize_t level;
+    Py_ssize_t order;
+    bool expand_orders;
+} side_cursor;
 
-    if (EXPECT(snapshot_level(snap, index, &price, &amount), 0)) {
+
+static void cursor_init(side_cursor *cursor, const side_snapshot *snap, bool expand_orders)
+{
+    cursor->snap = snap;
+    cursor->orders = NULL;
+    cursor->amounts = NULL;
+    cursor->level = 0;
+    cursor->order = 0;
+    cursor->expand_orders = expand_orders;
+}
+
+
+static void cursor_close_level(side_cursor *cursor)
+{
+    Py_CLEAR(cursor->orders);
+    Py_CLEAR(cursor->amounts);
+}
+
+
+// orders resting at one price are checksummed by ascending id, which is not the
+// order the level holds them in - a dict keeps them in the order they arrived
+static int cursor_open_level(side_cursor *cursor, PyObject *level)
+{
+    PyObject *orders = PyDict_Keys(level);
+    if (EXPECT(!orders, 0)) {
         return -1;
     }
 
-    int ret = -1;
+    if (EXPECT(PyList_Sort(orders) < 0, 0)) {
+        Py_DECREF(orders);
+        return -1;
+    }
 
-    if (EXPECT(string_builder(price, data, pos, size), 0)) {
+    cursor->orders = orders;
+    cursor->amounts = Py_NewRef(level);
+    cursor->order = 0;
+
+    return 0;
+}
+
+
+static int cursor_next(side_cursor *cursor, PyObject **field, PyObject **amount)
+{
+    while (true) {
+        if (cursor->orders) {
+            if (cursor->order < PyList_GET_SIZE(cursor->orders)) {
+                PyObject *id = PyList_GET_ITEM(cursor->orders, cursor->order++);
+                PyObject *value = PyDict_GetItemWithError(cursor->amounts, id);
+
+                if (EXPECT(!value, 0)) {
+                    if (!PyErr_Occurred()) {
+                        PyErr_SetObject(PyExc_KeyError, id);
+                    }
+                    return -1;
+                }
+
+                *field = Py_NewRef(id);
+                *amount = Py_NewRef(value);
+
+                return 1;
+            }
+
+            cursor_close_level(cursor);
+        }
+
+        if (cursor->level >= cursor->snap->levels) {
+            return 0;
+        }
+
+        PyObject *price = NULL;
+        PyObject *value = NULL;
+
+        if (EXPECT(snapshot_level(cursor->snap, cursor->level++, &price, &value), 0)) {
+            return -1;
+        }
+
+        if (!cursor->expand_orders || !PyDict_Check(value)) {
+            *field = price;
+            *amount = value;
+
+            return 1;
+        }
+
+        int ret = cursor_open_level(cursor, value);
+        Py_DECREF(value);
+        Py_DECREF(price);
+
+        if (EXPECT(ret, 0)) {
+            return -1;
+        }
+    }
+}
+
+
+static int append_entry(side_cursor *cursor, uint8_t *data, int *pos, int size, char separator, string_builder_t string_builder, bool negate_amount)
+{
+    PyObject *field = NULL;
+    PyObject *amount = NULL;
+
+    int ret = cursor_next(cursor, &field, &amount);
+    if (ret != 1) {
+        return ret;
+    }
+
+    ret = -1;
+
+    if (EXPECT(string_builder(field, data, pos, size), 0)) {
         goto done;
     }
     if (EXPECT(*pos >= size, 0)) {
@@ -750,7 +853,6 @@ static int append_level(const side_snapshot *snap, Py_ssize_t index, uint8_t *da
     }
     data[(*pos)++] = separator;
 
-    // Bitfinex checksums the wire amount, which is negative on the ask side
     if (negate_amount) {
         if (EXPECT(*pos >= size, 0)) {
             checksum_overflow();
@@ -768,18 +870,18 @@ static int append_level(const side_snapshot *snap, Py_ssize_t index, uint8_t *da
     }
     data[(*pos)++] = separator;
 
-    ret = 0;
+    ret = 1;
 
 done:
     Py_DECREF(amount);
-    Py_DECREF(price);
+    Py_DECREF(field);
 
     return ret;
 }
 
 
 // build the interleaved string, and report the length to hash
-static int build_alternating(const Orderbook *ob, const uint32_t depth, char separator, string_builder_t string_builder, bool signed_asks, int *length)
+static int build_alternating(const Orderbook *ob, const uint32_t depth, char separator, string_builder_t string_builder, bool signed_asks, bool expand_orders, int *length)
 {
     side_snapshot bids, asks;
     if (EXPECT(snapshot_side(ob->bids, -1, &bids), 0)) {
@@ -790,21 +892,21 @@ static int build_alternating(const Orderbook *ob, const uint32_t depth, char sep
         return -1;
     }
 
+    side_cursor bid_cursor, ask_cursor;
+    cursor_init(&bid_cursor, &bids, expand_orders);
+    cursor_init(&ask_cursor, &asks, expand_orders);
+
     int ret = -1;
     int pos = 0;
     int buffer_len = ob->checksum_len;
 
     for(uint32_t i = 0; i < depth; ++i) {
-        if ((Py_ssize_t)i < bids.levels) {
-            if (EXPECT(append_level(&bids, i, ob->checksum_buffer, &pos, buffer_len, separator, string_builder, false), 0)) {
-                goto done;
-            }
+        if (EXPECT(append_entry(&bid_cursor, ob->checksum_buffer, &pos, buffer_len, separator, string_builder, false) < 0, 0)) {
+            goto done;
         }
 
-        if ((Py_ssize_t)i < asks.levels) {
-            if (EXPECT(append_level(&asks, i, ob->checksum_buffer, &pos, buffer_len, separator, string_builder, signed_asks), 0)) {
-                goto done;
-            }
+        if (EXPECT(append_entry(&ask_cursor, ob->checksum_buffer, &pos, buffer_len, separator, string_builder, signed_asks) < 0, 0)) {
+            goto done;
         }
     }
 
@@ -812,6 +914,8 @@ static int build_alternating(const Orderbook *ob, const uint32_t depth, char sep
     ret = 0;
 
 done:
+    cursor_close_level(&ask_cursor);
+    cursor_close_level(&bid_cursor);
     release_side(&asks);
     release_side(&bids);
 
@@ -827,11 +931,11 @@ static PyObject* alternating_checksum(const Orderbook *ob, const uint32_t depth,
     }
 
     int length;
-    if (EXPECT(build_alternating(ob, depth, separator, string_builder, signed_asks, &length), 0)) {
+    if (EXPECT(build_alternating(ob, depth, separator, string_builder, signed_asks, false, &length), 0)) {
         return NULL;
     }
 
-    return PyLong_FromUnsignedLong(crc32(ob->checksum_buffer, length));
+    return PyLong_FromUnsignedLong(crc32_orderbook(ob->checksum_buffer, length));
 }
 
 
@@ -858,17 +962,17 @@ static PyObject* bitfinex_checksum(const Orderbook *ob)
     }
 
     int length;
-    if (EXPECT(build_alternating(ob, 25, ':', str_string_builder, true, &length), 0)) {
+    if (EXPECT(build_alternating(ob, 25, ':', str_string_builder, true, true, &length), 0)) {
         return NULL;
     }
 
     if (EXPECT(bitfinex_rerender_needed(ob->checksum_buffer, length), 0)) {
-        if (EXPECT(build_alternating(ob, 25, ':', bitfinex_string_builder, true, &length), 0)) {
+        if (EXPECT(build_alternating(ob, 25, ':', bitfinex_string_builder, true, true, &length), 0)) {
             return NULL;
         }
     }
 
-    return PyLong_FromUnsignedLong(crc32(ob->checksum_buffer, length));
+    return PyLong_FromUnsignedLong(crc32_orderbook(ob->checksum_buffer, length));
 }
 
 

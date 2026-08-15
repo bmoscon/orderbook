@@ -2,7 +2,7 @@
 # requires uv and lcov to be installed
 set -e
 
-rm -rf build/ dist/
+rm -rf build/ dist/ order_book*.so
 export CFLAGS="-coverage"
 
 uv venv
