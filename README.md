@@ -287,6 +287,3 @@ Numbers below are from Python 3.14, a replay window of the top 2,000 levels per 
 | OKX      | 4.6 µs |  |
 | Bitget   | 4.3 µs |  |
 | Bitfinex | 4.3 µs | 5.3 µs |
-
-L2 books: KRAKEN , OKX , BITGET , BITFINEX  per `checksum()`
-L3 books: Bitfinex  per `checksum()`
