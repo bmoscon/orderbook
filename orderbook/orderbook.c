@@ -118,9 +118,6 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
         if (strncmp(checksum_str.buf, "KRAKEN", checksum_str.len) == 0) {
             format = KRAKEN;
             buffer_len = 2048;
-        } else if ((checksum_str.len > 2) && (strncmp(checksum_str.buf, "FTX", 3) == 0)) {
-            format = FTX;
-            buffer_len = 20480;
         } else if ((checksum_str.len > 2) && ((strncmp(checksum_str.buf, "OKX", 3) == 0) || (strncmp(checksum_str.buf, "OKCO", 4) == 0))) {
             format = OKX;
             buffer_len = 4096;
@@ -626,31 +623,6 @@ static int str_string_builder(PyObject *pydata, uint8_t *data, int *pos, int siz
 }
 
 
-static int floatstr_string_builder(PyObject *pydata, uint8_t *data, int *pos, int size)
-{
-    PyObject *repr = PyObject_Str(pydata);
-    if (EXPECT(!repr, 0)) {
-        return -1;
-    }
-
-    PyObject *flt = PyFloat_FromString(repr);
-    if (EXPECT(!flt, 0)) {
-        Py_DECREF(repr);
-        return -1;
-    }
-
-    Py_DECREF(repr);
-
-    if (EXPECT(str_string_builder(flt, data, pos, size), 0)) {
-        Py_DECREF(flt);
-        return -1;
-    }
-
-    Py_DECREF(flt);
-    return 0;
-}
-
-
 static int formatf_string_builder(PyObject *pydata, uint8_t *data, int *pos, int size)
 {
     OrderBookModuleState* st = get_order_book_state(NULL);
@@ -678,26 +650,6 @@ static int okx_string_builder(PyObject *pydata, uint8_t *data, int *pos, int siz
     if (EXPECT((long)memchr(&data[startpos], (char) 'E', *pos - startpos), (long)0)) {
         *pos = startpos;
         if (EXPECT(formatf_string_builder(pydata, data, pos, size), 0)) {
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
-
-static int ftx_string_builder(PyObject *pydata, uint8_t *data, int *pos, int size)
-{
-    int startpos = *pos;
-    if (EXPECT(str_string_builder(pydata, data, pos, size), 0)) {
-        return -1;
-    }
-
-    // default 'str' formatting is wrong when the value is less than 0.0001 or in scientific notation
-    int written = *pos - startpos;
-    if (EXPECT((written >= 6 && !strncmp((const char *)&data[startpos], "0.0000", 6)) || memchr(&data[startpos], (char) 'E', written), 0)) {
-        *pos = startpos;
-        if (EXPECT(floatstr_string_builder(pydata, data, pos, size), 0)) {
             return -1;
         }
     }
@@ -981,8 +933,6 @@ static PyObject* calculate_checksum(const Orderbook *ob)
     switch (ob->checksum) {
         case KRAKEN:
             return kraken_checksum(ob);
-        case FTX:
-            return alternating_checksum(ob, 100, ':', ftx_string_builder, false);
         case OKX:
             return alternating_checksum(ob, 25, ':', okx_string_builder, false);
         case BITGET:

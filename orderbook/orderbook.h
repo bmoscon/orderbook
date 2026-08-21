@@ -20,7 +20,6 @@ associated with this software.
 enum Checksums {
     CHECKSUM_PROCESSING_ERROR = -1,
     KRAKEN,
-    FTX,
     OKX,
     BITGET,
     BITFINEX,

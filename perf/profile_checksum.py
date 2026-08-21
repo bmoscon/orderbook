@@ -226,17 +226,6 @@ def kraken_checksum(book):
     return zlib.crc32(combined.encode())
 
 
-def ftx_checksum(book):
-    n = 100
-    def fmt(x): return str(float(x))
-
-    bids = [f"{fmt(price)}:{fmt(book.bids[price])}" for price in list(book.bids)[:n]]
-    asks = [f"{fmt(price)}:{fmt(book.asks[price])}" for price in list(book.asks)[:n]]
-
-    combined = ":".join([x for x in chain(*zip_longest(bids, asks)) if x is not None])
-    return zlib.crc32(combined.encode())
-
-
 def okx_checksum(book):
     n = 25
     def fmt(x): return format(x, 'f')
@@ -297,7 +286,6 @@ def compare(fmt, reference, n=1000):
 
 def main():
     compare('KRAKEN', kraken_checksum)
-    compare('FTX', ftx_checksum)
     compare('OKX', okx_checksum)
     compare('BITGET', bitget_checksum)
     compare('BITFINEX', bitfinex_checksum)
