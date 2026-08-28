@@ -9,7 +9,7 @@ description = "A fast orderbook implementation, in C, for Python"
 authors = [{name = "Bryant Moscon", email = "bmoscon@gmail.com"}]
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 keywords = ["market data", "trading", "order book", "MBO", "L2", "L3", "LOB"]
 dynamic = ["readme"]
 classifiers = [
@@ -17,10 +17,10 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: C",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: Free Threading :: 3 - Stable",
     "Programming Language :: Python :: Implementation :: CPython",
     "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",

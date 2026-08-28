@@ -34,8 +34,6 @@ static void replace_side(SortedDict *side, PyObject *data)
 void Orderbook_dealloc(Orderbook *self)
 {
     PyObject_GC_UnTrack(self);
-    free(self->checksum_buffer);
-    self->checksum_buffer = NULL;
     Py_CLEAR(self->bids);
     Py_CLEAR(self->asks);
     Py_TYPE(self)->tp_free((PyObject *) self);
@@ -88,24 +86,16 @@ PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         self->max_depth = 0;
         self->truncate = false;
         self->checksum = INVALID_CHECKSUM_FORMAT;
-        self->checksum_buffer = NULL;
         self->checksum_len = 0;
-        self->checksumming = false;
     }
     return (PyObject *) self;
 }
 
 
-int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
+static int locked_init(Orderbook *self, PyObject *args, PyObject *kwds)
 {
     static char *kwlist[] = {"max_depth", "max_depth_strict", "checksum_format", NULL};
     Py_buffer checksum_str = {0};
-
-   // reachable because rendering a level calls __str__ (which could be re-entrant)
-    if (EXPECT(self->checksumming, 0)) {
-        PyErr_SetString(PyExc_RuntimeError, "cannot modify orderbook while checksumming");
-        return -1;
-    }
 
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|ipz*", kwlist, &self->max_depth, &self->truncate, &checksum_str)) {
         return -1;
@@ -133,22 +123,9 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
             return -1;
         }
 
-        uint8_t *buffer = calloc(buffer_len, sizeof(uint8_t));
-        if (!buffer) {
-            PyBuffer_Release(&checksum_str);
-            PyErr_SetNone(PyExc_MemoryError);
-            return -1;
-        }
-
-        // __init__ can be called more than once on the same book
-        // so make sure we are properly cleaning up
-        free(self->checksum_buffer);
         self->checksum = format;
-        self->checksum_buffer = buffer;
         self->checksum_len = buffer_len;
     } else {
-        free(self->checksum_buffer);
-        self->checksum_buffer = NULL;
         self->checksum_len = 0;
         self->checksum = INVALID_CHECKSUM_FORMAT;
     }
@@ -161,6 +138,16 @@ int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
     PyBuffer_Release(&checksum_str);
 
     return 0;
+}
+
+
+int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds)
+{
+    int ret;
+    Py_BEGIN_CRITICAL_SECTION2(self->bids, self->asks);
+    ret = locked_init(self, args, kwds);
+    Py_END_CRITICAL_SECTION2();
+    return ret;
 }
 
 
@@ -180,15 +167,18 @@ PyObject* Orderbook_todict(const Orderbook *self, PyObject *unused, PyObject *kw
         return NULL;
     }
 
-    PyObject *bids = SortedDict_todict_impl(self->bids, from, to);
-    if (EXPECT(!bids, 0)) {
-        Py_DECREF(ret);
-        return NULL;
-    }
+    PyObject *bids;
+    PyObject *asks = NULL;
 
-    PyObject *asks = SortedDict_todict_impl(self->asks, from, to);
-    if (EXPECT(!asks, 0)) {
-        Py_DECREF(bids);
+    Py_BEGIN_CRITICAL_SECTION2(self->bids, self->asks);
+    bids = locked_SortedDict_todict(self->bids, from, to);
+    if (EXPECT(bids != NULL, 1)) {
+        asks = locked_SortedDict_todict(self->asks, from, to);
+    }
+    Py_END_CRITICAL_SECTION2();
+
+    if (EXPECT(!bids || !asks, 0)) {
+        Py_XDECREF(bids);
         Py_DECREF(ret);
         return NULL;
     }
@@ -213,32 +203,54 @@ PyObject* Orderbook_todict(const Orderbook *self, PyObject *unused, PyObject *kw
 }
 
 
-PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored))
+static PyObject *locked_checksum(const Orderbook *self)
 {
     if (EXPECT(self->checksum == INVALID_CHECKSUM_FORMAT, 0)) {
         PyErr_SetString(PyExc_ValueError, "no checksum format specified");
         return NULL;
     }
 
-    // see __init__
-    if (EXPECT(self->checksumming, 0)) {
-        PyErr_SetString(PyExc_RuntimeError, "cannot checksum while checksumming");
-        return NULL;
+    uint8_t buffer[CHECKSUM_BUFFER_MAX];
+
+    for (int attempt = 0; ; ++attempt) {
+        if (EXPECT(update_keys(self->bids), 0)) {
+            return NULL;
+        }
+
+        if (EXPECT(update_keys(self->asks), 0)) {
+            return NULL;
+        }
+
+        // refreshing the asks can release the lock, and a writer that got in
+        // may have logged a change on the bids
+        if (EXPECT(self->bids->dirty || self->bids->pend_count, 0)) {
+            continue;
+        }
+
+        uint64_t bids_version = self->bids->version;
+        uint64_t asks_version = self->asks->version;
+
+        PyObject *ret = calculate_checksum(self, buffer);
+        if (EXPECT(ret != NULL, 1)) {
+            return ret;
+        }
+
+        bool moved = (self->bids->version != bids_version) || (self->asks->version != asks_version);
+        if (!moved || attempt == SD_READ_RETRIES || !PyErr_ExceptionMatches(PyExc_KeyError)) {
+            return NULL;
+        }
+
+        PyErr_Clear();
     }
+}
 
-    if (EXPECT(update_keys(self->bids), 0)) {
-        return NULL;
-    }
 
-    if (EXPECT(update_keys(self->asks), 0)) {
-        return NULL;
-    }
-
-    Orderbook *book = (Orderbook *)self;
-    book->checksumming = true;
-    PyObject *ret = calculate_checksum(self);
-    book->checksumming = false;
-
+PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored))
+{
+    PyObject *ret;
+    Py_BEGIN_CRITICAL_SECTION2(self->bids, self->asks);
+    ret = locked_checksum(self);
+    Py_END_CRITICAL_SECTION2();
     return ret;
 }
 
@@ -246,7 +258,11 @@ PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored)
 /* Orderbook Mapping Functions */
 Py_ssize_t Orderbook_len(const Orderbook *self)
 {
-    return SortedDict_len(self->bids) + SortedDict_len(self->asks);
+    Py_ssize_t ret;
+    Py_BEGIN_CRITICAL_SECTION2(self->bids, self->asks);
+    ret = locked_SortedDict_len(self->bids) + locked_SortedDict_len(self->asks);
+    Py_END_CRITICAL_SECTION2();
+    return ret;
 }
 
 
@@ -312,7 +328,10 @@ int Orderbook_setitem(const Orderbook *self, PyObject *key, PyObject *value)
         return -1;
     }
 
-    replace_side(key_int == BID ? self->bids : self->asks, copy);
+    SortedDict *side = (key_int == BID) ? self->bids : self->asks;
+    Py_BEGIN_CRITICAL_SECTION(side);
+    replace_side(side, copy);
+    Py_END_CRITICAL_SECTION();
 
     return 0;
 }
@@ -341,6 +360,13 @@ PyMODINIT_FUNC PyInit_order_book(void)
     m = PyModule_Create(&orderbookmodule);
     if (m == NULL)
         return NULL;
+
+#ifdef Py_GIL_DISABLED
+    if (PyUnstable_Module_SetGIL(m, Py_MOD_GIL_NOT_USED) < 0) {
+        Py_DECREF(m);
+        return NULL;
+    }
+#endif
 
     Py_INCREF(&OrderbookType);
     if (PyModule_AddObject(m, "OrderBook", (PyObject *) &OrderbookType) < 0) {
@@ -469,7 +495,7 @@ typedef struct {
 
 static int snapshot_side(SortedDict *side, Py_ssize_t limit, side_snapshot *snap)
 {
-    Py_ssize_t levels = SortedDict_len(side);
+    Py_ssize_t levels = locked_SortedDict_len(side);
     Py_ssize_t cached = side->k_len;
 
     if (levels > cached) {
@@ -505,10 +531,11 @@ static void release_side(side_snapshot *snap)
 static int snapshot_level(const side_snapshot *snap, Py_ssize_t index, PyObject **price, PyObject **amount)
 {
     PyObject *key = Py_NewRef(PyTuple_GET_ITEM(snap->keys, index));
-    PyObject *value = PyDict_GetItemWithError(snap->contents, key);
+    PyObject *value;
+    int found = PyDict_GetItemRef(snap->contents, key, &value);
 
-    if (EXPECT(!value, 0)) {
-        if (!PyErr_Occurred()) {
+    if (EXPECT(found <= 0, 0)) {
+        if (found == 0) {
             PyErr_SetObject(PyExc_KeyError, key);
         }
         Py_DECREF(key);
@@ -516,7 +543,7 @@ static int snapshot_level(const side_snapshot *snap, Py_ssize_t index, PyObject 
     }
 
     *price = key;
-    *amount = Py_NewRef(value);
+    *amount = value;
 
     return 0;
 }
@@ -549,7 +576,7 @@ static int kraken_populate_side(const side_snapshot *snap, uint8_t *data, int *p
 }
 
 
-static PyObject* kraken_checksum(const Orderbook *ob)
+static PyObject* kraken_checksum(const Orderbook *ob, uint8_t *buffer)
 {
     if (EXPECT(ob->max_depth && ob->max_depth < 10, 0)) {
         PyErr_SetString(PyExc_ValueError, "Max depth is less than usual number of levels for Kraken checksum");
@@ -570,15 +597,15 @@ static PyObject* kraken_checksum(const Orderbook *ob)
     PyObject *ret = NULL;
     int pos = 0;
 
-    if (EXPECT(kraken_populate_side(&asks, ob->checksum_buffer, &pos, ob->checksum_len), 0)) {
+    if (EXPECT(kraken_populate_side(&asks, buffer, &pos, ob->checksum_len), 0)) {
         goto done;
     }
 
-    if (EXPECT(kraken_populate_side(&bids, ob->checksum_buffer, &pos, ob->checksum_len), 0)) {
+    if (EXPECT(kraken_populate_side(&bids, buffer, &pos, ob->checksum_len), 0)) {
         goto done;
     }
 
-    ret = PyLong_FromUnsignedLong(crc32_orderbook(ob->checksum_buffer, pos));
+    ret = PyLong_FromUnsignedLong(crc32_orderbook(buffer, pos));
 
 done:
     release_side(&bids);
@@ -713,7 +740,11 @@ static void cursor_close_level(side_cursor *cursor)
 // order the level holds them in - a dict keeps them in the order they arrived
 static int cursor_open_level(side_cursor *cursor, PyObject *level)
 {
+#ifdef Py_GIL_DISABLED
+    PyObject *orders = PyDict_Items(level);
+#else
     PyObject *orders = PyDict_Keys(level);
+#endif
     if (EXPECT(!orders, 0)) {
         return -1;
     }
@@ -724,7 +755,9 @@ static int cursor_open_level(side_cursor *cursor, PyObject *level)
     }
 
     cursor->orders = orders;
+#ifndef Py_GIL_DISABLED
     cursor->amounts = Py_NewRef(level);
+#endif
     cursor->order = 0;
 
     return 0;
@@ -736,19 +769,24 @@ static int cursor_next(side_cursor *cursor, PyObject **field, PyObject **amount)
     while (true) {
         if (cursor->orders) {
             if (cursor->order < PyList_GET_SIZE(cursor->orders)) {
-                PyObject *id = PyList_GET_ITEM(cursor->orders, cursor->order++);
-                PyObject *value = PyDict_GetItemWithError(cursor->amounts, id);
+                PyObject *entry = PyList_GET_ITEM(cursor->orders, cursor->order++);
+#ifdef Py_GIL_DISABLED
+                *field = Py_NewRef(PyTuple_GET_ITEM(entry, 0));
+                *amount = Py_NewRef(PyTuple_GET_ITEM(entry, 1));
+#else
+                PyObject *value;
+                int found = PyDict_GetItemRef(cursor->amounts, entry, &value);
 
-                if (EXPECT(!value, 0)) {
-                    if (!PyErr_Occurred()) {
-                        PyErr_SetObject(PyExc_KeyError, id);
+                if (EXPECT(found <= 0, 0)) {
+                    if (found == 0) {
+                        PyErr_SetObject(PyExc_KeyError, entry);
                     }
                     return -1;
                 }
 
-                *field = Py_NewRef(id);
-                *amount = Py_NewRef(value);
-
+                *field = Py_NewRef(entry);
+                *amount = value;
+#endif
                 return 1;
             }
 
@@ -833,7 +871,7 @@ done:
 
 
 // build the interleaved string, and report the length to hash
-static int build_alternating(const Orderbook *ob, const uint32_t depth, char separator, string_builder_t string_builder, bool signed_asks, bool expand_orders, int *length)
+static int build_alternating(const Orderbook *ob, uint8_t *buffer, const uint32_t depth, char separator, string_builder_t string_builder, bool signed_asks, bool expand_orders, int *length)
 {
     side_snapshot bids, asks;
     if (EXPECT(snapshot_side(ob->bids, -1, &bids), 0)) {
@@ -853,11 +891,11 @@ static int build_alternating(const Orderbook *ob, const uint32_t depth, char sep
     int buffer_len = ob->checksum_len;
 
     for(uint32_t i = 0; i < depth; ++i) {
-        if (EXPECT(append_entry(&bid_cursor, ob->checksum_buffer, &pos, buffer_len, separator, string_builder, false) < 0, 0)) {
+        if (EXPECT(append_entry(&bid_cursor, buffer, &pos, buffer_len, separator, string_builder, false) < 0, 0)) {
             goto done;
         }
 
-        if (EXPECT(append_entry(&ask_cursor, ob->checksum_buffer, &pos, buffer_len, separator, string_builder, signed_asks) < 0, 0)) {
+        if (EXPECT(append_entry(&ask_cursor, buffer, &pos, buffer_len, separator, string_builder, signed_asks) < 0, 0)) {
             goto done;
         }
     }
@@ -875,7 +913,7 @@ done:
 }
 
 
-static PyObject* alternating_checksum(const Orderbook *ob, const uint32_t depth, char separator, string_builder_t string_builder, bool signed_asks)
+static PyObject* alternating_checksum(const Orderbook *ob, uint8_t *buffer, const uint32_t depth, char separator, string_builder_t string_builder, bool signed_asks)
 {
     if (EXPECT(ob->max_depth && ob->max_depth < depth, 0)) {
         PyErr_SetString(PyExc_ValueError, "Max depth is less than minimum number of levels for checksum");
@@ -883,11 +921,11 @@ static PyObject* alternating_checksum(const Orderbook *ob, const uint32_t depth,
     }
 
     int length;
-    if (EXPECT(build_alternating(ob, depth, separator, string_builder, signed_asks, false, &length), 0)) {
+    if (EXPECT(build_alternating(ob, buffer, depth, separator, string_builder, signed_asks, false, &length), 0)) {
         return NULL;
     }
 
-    return PyLong_FromUnsignedLong(crc32_orderbook(ob->checksum_buffer, length));
+    return PyLong_FromUnsignedLong(crc32_orderbook(buffer, length));
 }
 
 
@@ -906,7 +944,7 @@ static bool bitfinex_rerender_needed(uint8_t *data, int length)
 }
 
 
-static PyObject* bitfinex_checksum(const Orderbook *ob)
+static PyObject* bitfinex_checksum(const Orderbook *ob, uint8_t *buffer)
 {
     if (EXPECT(ob->max_depth && ob->max_depth < 25, 0)) {
         PyErr_SetString(PyExc_ValueError, "Max depth is less than minimum number of levels for checksum");
@@ -914,31 +952,31 @@ static PyObject* bitfinex_checksum(const Orderbook *ob)
     }
 
     int length;
-    if (EXPECT(build_alternating(ob, 25, ':', str_string_builder, true, true, &length), 0)) {
+    if (EXPECT(build_alternating(ob, buffer, 25, ':', str_string_builder, true, true, &length), 0)) {
         return NULL;
     }
 
-    if (EXPECT(bitfinex_rerender_needed(ob->checksum_buffer, length), 0)) {
-        if (EXPECT(build_alternating(ob, 25, ':', bitfinex_string_builder, true, true, &length), 0)) {
+    if (EXPECT(bitfinex_rerender_needed(buffer, length), 0)) {
+        if (EXPECT(build_alternating(ob, buffer, 25, ':', bitfinex_string_builder, true, true, &length), 0)) {
             return NULL;
         }
     }
 
-    return PyLong_FromUnsignedLong(crc32_orderbook(ob->checksum_buffer, length));
+    return PyLong_FromUnsignedLong(crc32_orderbook(buffer, length));
 }
 
 
-static PyObject* calculate_checksum(const Orderbook *ob)
+static PyObject* calculate_checksum(const Orderbook *ob, uint8_t *buffer)
 {
     switch (ob->checksum) {
         case KRAKEN:
-            return kraken_checksum(ob);
+            return kraken_checksum(ob, buffer);
         case OKX:
-            return alternating_checksum(ob, 25, ':', okx_string_builder, false);
+            return alternating_checksum(ob, buffer, 25, ':', okx_string_builder, false);
         case BITGET:
-            return alternating_checksum(ob, 25, ':', str_string_builder, false);
+            return alternating_checksum(ob, buffer, 25, ':', str_string_builder, false);
         case BITFINEX:
-            return bitfinex_checksum(ob);
+            return bitfinex_checksum(ob, buffer);
         default:
             return NULL;
     }
