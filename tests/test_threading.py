@@ -166,4 +166,5 @@ def test_shared_iterator():
                 seen.append(pair)
 
     run_threads(drain)
-    assert set(seen) == set(sd.to_list())
+    assert sorted(seen) == sorted(sd.to_list())
+    assert len(seen) == len(sd)

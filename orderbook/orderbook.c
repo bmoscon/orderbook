@@ -96,10 +96,19 @@ static int locked_init(Orderbook *self, PyObject *args, PyObject *kwds)
 {
     static char *kwlist[] = {"max_depth", "max_depth_strict", "checksum_format", NULL};
     Py_buffer checksum_str = {0};
+    int max_depth = (int) self->max_depth;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|ipz*", kwlist, &self->max_depth, &self->truncate, &checksum_str)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|ipz*", kwlist, &max_depth, &self->truncate, &checksum_str)) {
         return -1;
     }
+
+    if (EXPECT(max_depth < 0, 0)) {
+        PyBuffer_Release(&checksum_str);
+        PyErr_SetString(PyExc_ValueError, "max_depth cannot be negative");
+        return -1;
+    }
+
+    self->max_depth = (uint32_t) max_depth;
 
     if (checksum_str.buf && checksum_str.len) {
         enum Checksums format;
@@ -222,23 +231,24 @@ static PyObject *locked_checksum(const Orderbook *self)
         }
 
         // refreshing the asks can release the lock, and a writer that got in
-        // may have logged a change on the bids
-        if (EXPECT(self->bids->dirty || self->bids->pend_count, 0)) {
+        // may have a change on the bids
+        if (EXPECT(self->bids->dirty || self->bids->pend_count, 0) && attempt < SD_READ_RETRIES) {
             continue;
         }
-
-        uint64_t bids_version = self->bids->version;
-        uint64_t asks_version = self->asks->version;
 
         PyObject *ret = calculate_checksum(self, buffer);
         if (EXPECT(ret != NULL, 1)) {
             return ret;
         }
 
-        bool moved = (self->bids->version != bids_version) || (self->asks->version != asks_version);
-        if (!moved || attempt == SD_READ_RETRIES || !PyErr_ExceptionMatches(PyExc_KeyError)) {
+        if (attempt >= SD_READ_RETRIES || !PyErr_ExceptionMatches(PyExc_KeyError)) {
             return NULL;
         }
+
+        self->bids->dirty = true;
+        SortedDict_flush_pending(self->bids);
+        self->asks->dirty = true;
+        SortedDict_flush_pending(self->asks);
 
         PyErr_Clear();
     }

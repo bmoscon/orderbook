@@ -137,3 +137,4 @@ coverage.info
 # non-public files
 tests/test_non_public.py
 utils/
+private/

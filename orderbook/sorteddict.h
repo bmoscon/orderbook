@@ -8,6 +8,7 @@ associated with this software.
 #define __SORTEDDICT__
 
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdbool.h>
 

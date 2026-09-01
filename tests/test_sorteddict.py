@@ -510,3 +510,45 @@ def test_unhashable_key():
 
     with pytest.raises(TypeError):
         d[[1, 2]] = 3
+
+
+def test_reinit_ordering_rebuilds_the_cache():
+    d = SortedDict({i: i for i in range(5)}, ordering='ASC')
+    d.keys()
+    d.__init__(ordering='DESC')
+
+    assert d.keys() == (4, 3, 2, 1, 0)
+    assert d.index(0)[0] == 4
+
+
+def test_reinit_with_other_kwargs_keeps_ordering():
+    d = SortedDict({i: i for i in range(5)}, ordering='DESC')
+    d.keys()
+    d.__init__(max_depth=3)
+
+    assert d.__ordering == 1
+    assert d.keys() == (4, 3, 2)
+
+
+def test_reinit_kwargs_then_write_keeps_sorted_order():
+    d = SortedDict({i: i for i in range(5)}, ordering='DESC')
+    d.keys()
+    d.__init__(truncate=False)
+    d[99] = 9
+
+    assert list(d.keys()) == sorted(d.keys(), reverse=True)
+    assert d.index(0)[0] == 99
+
+
+def test_reinit_first_time_defaults_to_ascending():
+    d = SortedDict({i: i for i in range(3)}, max_depth=2)
+    assert d.keys() == (0, 1)
+
+
+def test_max_depth_larger_than_int_is_rejected():
+    for value in (2 ** 31, 2 ** 32 + 5, 2 ** 40 + 7):
+        with pytest.raises(ValueError):
+            SortedDict({i: i for i in range(10)}, max_depth=value)
+
+    d = SortedDict({i: i for i in range(10)}, max_depth=2 ** 31 - 1)
+    assert len(d) == 10

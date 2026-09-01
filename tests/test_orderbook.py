@@ -296,3 +296,20 @@ def test_to_dict_conversion_failure():
     ob.asks = {2: 'x'}
     with pytest.raises(ValueError):
         ob.to_dict(to_type=int)
+
+
+def test_negative_max_depth():
+    with pytest.raises(ValueError):
+        OrderBook(max_depth=-1)
+
+    ob = OrderBook()
+    with pytest.raises(ValueError):
+        ob.__init__(max_depth=-5)
+
+
+def test_zero_max_depth():
+    ob = OrderBook(max_depth=0)
+    ob.bids = {Decimal(100 + i): Decimal(1) for i in range(5)}
+    assert len(ob.bids) == 5
+    assert len(ob.bids.keys()) == 5
+    assert len(list(ob.bids)) == 5
