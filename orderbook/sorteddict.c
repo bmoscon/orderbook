@@ -1514,18 +1514,22 @@ static int SortedDictIter_clear(SortedDictIter *self)
 
 static PyObject *SortedDictIter_next(SortedDictIter *self)
 {
-    Py_ssize_t index;
+#ifdef Py_GIL_DISABLED
+    Py_ssize_t index = _Py_atomic_add_ssize(&self->index, 1);
 
-    Py_BEGIN_CRITICAL_SECTION(self);
-    index = self->index;
-    if (index < self->len) {
-        self->index = index + 1;
+    if (index >= self->len) {
+        _Py_atomic_add_ssize(&self->index, -1);
+        return NULL;
     }
-    Py_END_CRITICAL_SECTION();
+#else
+    Py_ssize_t index = self->index;
 
     if (index >= self->len) {
         return NULL;
     }
+
+    self->index = index + 1;
+#endif
 
     PyObject *key = PyTuple_GET_ITEM(self->keys, index);
 
