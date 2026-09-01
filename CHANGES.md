@@ -2,7 +2,7 @@
 
 ### 1.1.0
  * Update: Remove FTX checksum support
- * Feature: free-thread python (3.13+) support
+ * Feature: free-threaded python (3.13+) support
 
 ### 1.0.2 (2026-08-15)
  * Feature: Bitfinex checksum support for L3 books
