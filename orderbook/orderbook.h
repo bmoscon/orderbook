@@ -17,6 +17,8 @@ associated with this software.
 #include "sorteddict.h"
 
 
+#define CHECKSUM_BUFFER_MAX 4096
+
 enum Checksums {
     CHECKSUM_PROCESSING_ERROR = -1,
     KRAKEN,
@@ -31,12 +33,9 @@ typedef struct {
     SortedDict *bids;
     SortedDict *asks;
     uint32_t max_depth;
-    uint8_t *checksum_buffer;
     uint32_t checksum_len;
     enum Checksums checksum;
     bool truncate;
-    // see __init__ in orderbook.c
-    bool checksumming;
 } Orderbook;
 
 
@@ -133,7 +132,7 @@ static PyModuleDef orderbookmodule = {
 
 
 // Checksum Definitions
-static PyObject* calculate_checksum(const Orderbook *ob);
+static PyObject* calculate_checksum(const Orderbook *ob, uint8_t *buffer);
 
 
 #endif

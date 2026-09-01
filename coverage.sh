@@ -10,7 +10,7 @@ uv build --wheel --python .venv/bin/python
 uv pip install --reinstall dist/*.whl pytest requests sortedcontainers
 
 # produces the coverage data
-uv run pytest tests/
+uv run --no-sync pytest tests/
 
 cd build/temp*
 lcov -c --directory . --output-file all.info

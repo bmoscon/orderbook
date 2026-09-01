@@ -1,7 +1,7 @@
 # Orderbook
 
 [![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
-![Python](https://img.shields.io/badge/Python-3.12+-green.svg)
+![Python](https://img.shields.io/badge/Python-3.13+-green.svg)
 [![PyPi](https://img.shields.io/badge/PyPi-order--book-brightgreen)](https://pypi.python.org/pypi/order-book)
 ![coverage-lines](https://img.shields.io/badge/coverage%3A%20lines-88.5%25-blue)
 ![coverage-functions](https://img.shields.io/badge/coverage%3A%20functions-100%25-blue)
@@ -12,7 +12,7 @@ A ***fast*** L2/L3 orderbook data structure, in C, for Python
 
 ### Installation
 
-Python 3.12+ supported. In general, [uv](https://docs.astral.sh/uv/) is preferred and will be utilized throughout this document.
+Python 3.13+ supported. [uv](https://docs.astral.sh/uv/) is preferred and will be utilized throughout this document.
 
 To add it to a project `uv add order-book` or, to install it into an environment directly, `uv pip install order-book`
 
@@ -231,6 +231,7 @@ print(ob.to_dict(from_type=str, to_type=float))
 * Sides maintained in correct order
 * Can perform orderbook checksums
 * Supports max depth and depth truncation
+* Free-threaded Python support
 
 
 

@@ -20,6 +20,7 @@ from decimal import Decimal
 from pathlib import Path
 from time import perf_counter_ns
 
+import order_book
 from order_book import OrderBook
 
 from pyorderbook import OrderBook as PyOrderBook
@@ -650,6 +651,7 @@ def main():
         'seed': args.seed, 'ops': args.ops, 'python_ops': args.python_ops,
         'depth': args.depth, 'python': platform.python_version(),
         'machine': platform.machine(), 'timer_resolution_ns': resolution,
+        'so': order_book.__file__,
     }}
 
     print(f'order_book real-data benchmark -- {l2_snap["product"]} snapshot '

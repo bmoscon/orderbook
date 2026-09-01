@@ -25,6 +25,7 @@ enum Ordering {
 
 // pending key changes tracked. once the limit is hit, full sort of the cache
 #define SD_PENDING_MAX 64
+#define SD_READ_RETRIES 64
 
 // changes to the keys are either inserts or deletes
 enum PendingOp {
@@ -40,7 +41,7 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     PyObject *data;
-    // the sorted key cache: a plain array of owned refs. merges move pointers between arrays
+    // the sorted key cache - a plain array of owned refs. merges move pointers between arrays
     PyObject **karr;
     Py_ssize_t k_len;
     // consumers that need immutable snapshot get this lazily built tuple of karr, cached until the key set changes
@@ -50,7 +51,7 @@ typedef struct {
     int depth;
     uint16_t pend_count;
     bool truncate;
-    // set when only a full re-sort can rebuild the cache. changes that are pended are should not toggle
+    // set when only a full sort can rebuild the cache. changes that are pended are should not toggle
     bool dirty;
     PendingEntry pend[SD_PENDING_MAX];
 } SortedDict;
@@ -61,6 +62,7 @@ typedef struct {
     PyObject_HEAD
     PyObject *keys;
     PyObject *data;
+    PyObject *owner;
     Py_ssize_t index;
     Py_ssize_t len;    // obeys max_depth
     bool pairs;
@@ -79,12 +81,13 @@ int SortedDict_clear(SortedDict *self);
 PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored));
 PyObject* SortedDict_index(SortedDict *self, PyObject *index);
 PyObject* SortedDict_todict(SortedDict *self, PyObject *unused, PyObject *kwargs);
-PyObject* SortedDict_todict_impl(SortedDict *self, PyObject *from, PyObject *to);
+PyObject* locked_SortedDict_todict(SortedDict *self, PyObject *from, PyObject *to);
 PyObject* SortedDict_tolist(SortedDict *self, PyObject *Py_UNUSED(ignored));
 PyObject* SortedDict_items(SortedDict *self, PyObject *Py_UNUSED(ignored));
 PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored));
 
 Py_ssize_t SortedDict_len(const SortedDict *self);
+Py_ssize_t locked_SortedDict_len(const SortedDict *self);
 PyObject *SortedDict_getitem(SortedDict *self, PyObject *key);
 int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value);
 
@@ -95,10 +98,16 @@ PyObject *SortedDict_getiter(SortedDict *self);
 
 // SortedDict class members
 static PyMemberDef SortedDict_members[] = {
-    {"__data", T_OBJECT_EX, offsetof(SortedDict, data), READONLY, "internal data"},
     {"__ordering", T_INT, offsetof(SortedDict, ordering), 0, "ordering flag"},
     {"__truncate", T_BOOL, offsetof(SortedDict, truncate), 0, "truncate flag"},
     {"__max_depth", T_INT, offsetof(SortedDict, depth), 0, "maximum depth"},
+    {NULL}
+};
+
+PyObject *SortedDict_get_data(SortedDict *self, void *closure);
+
+static PyGetSetDef SortedDict_getset[] = {
+    {"__data", (getter) SortedDict_get_data, NULL, "internal data", NULL},
     {NULL}
 };
 
@@ -140,6 +149,7 @@ static PyTypeObject SortedDictType = {
     .tp_traverse = (traverseproc) SortedDict_traverse,
     .tp_clear = (inquiry) SortedDict_clear,
     .tp_members = SortedDict_members,
+    .tp_getset = SortedDict_getset,
     .tp_methods = SortedDict_methods,
     .tp_as_mapping = &SortedDict_mapping,
     .tp_as_sequence = &SortedDict_seq,

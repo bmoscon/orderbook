@@ -15,12 +15,21 @@ static PyObject *SortedDict_iter_new(SortedDict *self, bool pairs);
 /* Sorted Dictionary */
 void SortedDict_flush_pending(SortedDict *self)
 {
-    for (uint16_t i = 0; i < self->pend_count; ++i) {
-        Py_CLEAR(self->pend[i].key);
+    PyObject *keys[SD_PENDING_MAX];
+    uint16_t count = self->pend_count;
+
+    for (uint16_t i = 0; i < count; ++i) {
+        keys[i] = self->pend[i].key;
+        self->pend[i].key = NULL;
     }
 
     self->pend_count = 0;
     self->version++;
+
+    // empty before anything is released
+    for (uint16_t i = 0; i < count; ++i) {
+        Py_DECREF(keys[i]);
+    }
 }
 
 
@@ -43,15 +52,17 @@ void SortedDict_drop_key_cache(SortedDict *self)
 
 
 // install a freshly built key array, releasing the previous one afterwards
-static void karr_install(SortedDict *self, PyObject **arr, Py_ssize_t len)
+static void karr_install(SortedDict *self, PyObject **arr, Py_ssize_t len, PyObject *tuple)
 {
     PyObject **prev = self->karr;
     Py_ssize_t prev_len = self->k_len;
+    PyObject *prev_tuple = self->keys_tuple;
 
     self->karr = arr;
     self->k_len = len;
-    Py_CLEAR(self->keys_tuple);
+    self->keys_tuple = tuple;
 
+    Py_XDECREF(prev_tuple);
     if (prev) {
         for (Py_ssize_t i = 0; i < prev_len; ++i) {
             Py_XDECREF(prev[i]);
@@ -102,8 +113,8 @@ PyObject *SortedDict_key_window(SortedDict *self, Py_ssize_t want)
 
 static void escalate_to_dirty(SortedDict *self)
 {
-    SortedDict_flush_pending(self);
     self->dirty = true;
+    SortedDict_flush_pending(self);
 }
 
 
@@ -194,7 +205,7 @@ PyObject *SortedDict_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 }
 
 
-int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
+static int locked_init(SortedDict *self, PyObject *args, PyObject *kwds)
 {
     PyObject *dict = NULL;
 
@@ -219,10 +230,10 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
             return -1;
         }
 
-        Py_XSETREF(self->data, copy);
         // the cached keys and pending log describe the old data
-        SortedDict_drop_key_cache(self);
         escalate_to_dirty(self);
+        SortedDict_drop_key_cache(self);
+        Py_XSETREF(self->data, copy);
     }
 
 
@@ -298,6 +309,16 @@ int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
 }
 
 
+int SortedDict_init(SortedDict *self, PyObject *args, PyObject *kwds)
+{
+    int ret;
+    Py_BEGIN_CRITICAL_SECTION(self);
+    ret = locked_init(self, args, kwds);
+    Py_END_CRITICAL_SECTION();
+    return ret;
+}
+
+
 // bisect over the live key array. every compare can reenter and swap the
 // array out from under us, so the version is checked after each one.
 // ret >= 0 position, -1 exception, -2 the book mutated mid-search
@@ -337,7 +358,9 @@ static int full_sort(SortedDict *self)
     for (int attempt = 0; ; ++attempt) {
         uint64_t version = self->version;
 
-        PyObject *keys = PyDict_Keys(self->data);
+        PyObject *data = Py_NewRef(self->data);
+        PyObject *keys = PyDict_Keys(data);
+        Py_DECREF(data);
         if (EXPECT(!keys, 0)) {
             return 1;
         }
@@ -374,16 +397,14 @@ static int full_sort(SortedDict *self)
         }
 
         if (EXPECT(self->version == version, 1)) {
-            karr_install(self, arr, n);
-            Py_XSETREF(self->keys_tuple, tuple);
             self->dirty = false;
+            karr_install(self, arr, n, tuple);
             return 0;
         }
 
         if (attempt == 3) {
             // a comparator keeps mutating the book, so leave dirty
-            karr_install(self, arr, n);
-            Py_XSETREF(self->keys_tuple, tuple);
+            karr_install(self, arr, n, tuple);
             return 0;
         }
 
@@ -679,31 +700,38 @@ done:
 
 /* internal helper function to update keys */
 inline int update_keys(SortedDict *self) {
-    if (!self->dirty && self->karr) {
-        if (self->pend_count == 0) {
-            return 0;
+    while (true) {
+        if (!self->dirty && self->karr) {
+            if (self->pend_count == 0) {
+                return 0;
+            }
+
+            int applied = apply_pending(self);
+            if (applied < 0) {
+                return 1;
+            }
+
+            if (applied == 0) {
+                continue;
+            }
         }
 
-        int applied = apply_pending(self);
-        if (applied == 0) {
-            return 0;
-        }
-
-        if (applied < 0) {
+        if (full_sort(self)) {
             return 1;
         }
     }
-
-    return full_sort(self);
 }
 
 
-static PyObject *build_items(SortedDict *self)
+static PyObject *build_items_once(SortedDict *self, bool *moved)
 {
+    *moved = false;
+
     if (EXPECT(update_keys(self), 0)) {
         return NULL;
     }
 
+    uint64_t version = self->version;
     PyObject *keys = karr_materialize(self);
     if (EXPECT(!keys, 0)) {
         return NULL;
@@ -724,10 +752,12 @@ static PyObject *build_items(SortedDict *self)
 
     for (Py_ssize_t i = 0; i < len; ++i) {
         PyObject *key = PyTuple_GET_ITEM(keys, i);
-        PyObject *value = PyDict_GetItemWithError(data, key);
+        PyObject *value;
+        int found = PyDict_GetItemRef(data, key, &value);
 
-        if (EXPECT(!value, 0)) {
-            if (!PyErr_Occurred()) {
+        if (EXPECT(found <= 0, 0)) {
+            if (found == 0) {
+                *moved = (self->version != version);
                 PyErr_SetObject(PyExc_KeyError, key);
             }
             Py_DECREF(ret);
@@ -736,12 +766,13 @@ static PyObject *build_items(SortedDict *self)
 
         PyObject *entry = PyTuple_New(2);
         if (EXPECT(!entry, 0)) {
+            Py_DECREF(value);
             Py_DECREF(ret);
             goto error;
         }
 
         PyTuple_SET_ITEM(entry, 0, Py_NewRef(key));
-        PyTuple_SET_ITEM(entry, 1, Py_NewRef(value));
+        PyTuple_SET_ITEM(entry, 1, value);
         PyList_SET_ITEM(ret, i, entry);
     }
 
@@ -756,7 +787,21 @@ error:
 }
 
 
-PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored))
+static PyObject *build_items(SortedDict *self)
+{
+    bool moved;
+    PyObject *ret = build_items_once(self, &moved);
+
+    for (int attempt = 0; !ret && moved && attempt < SD_READ_RETRIES; ++attempt) {
+        PyErr_Clear();
+        ret = build_items_once(self, &moved);
+    }
+
+    return ret;
+}
+
+
+static PyObject *locked_keys(SortedDict *self)
 {
     if (EXPECT(update_keys(self), 0)) {
         return NULL;
@@ -772,6 +817,16 @@ PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored))
     }
 
     return Py_NewRef(ret);
+}
+
+
+PyObject* SortedDict_keys(SortedDict *self, PyObject *Py_UNUSED(ignored))
+{
+    PyObject *ret;
+    Py_BEGIN_CRITICAL_SECTION(self);
+    ret = locked_keys(self);
+    Py_END_CRITICAL_SECTION();
+    return ret;
 }
 
 
@@ -820,11 +875,19 @@ static int peek_best(SortedDict *self, PyObject **out)
             }
 
             Py_DECREF(cand);
+            if (EXPECT(self->version != version, 0)) {
+                goto done;
+            }
         }
     }
 
     // a pending insert can beat the best surviving old key
     for (Py_ssize_t p = 0; p < count; ++p) {
+        // the previous round ended in a release
+        if (EXPECT(self->version != version, 0)) {
+            goto done;
+        }
+
         if (self->pend[p].op != PENDING_INSERT) {
             continue;
         }
@@ -878,13 +941,13 @@ static int peek_best(SortedDict *self, PyObject **out)
         goto done;
     }
 
-    PyObject *value = PyDict_GetItemWithError(data, best);
-    if (EXPECT(!value, 0)) {
-        status = PyErr_Occurred() ? -1 : 1;
+    PyObject *value;
+    int found = PyDict_GetItemRef(data, best, &value);
+    if (EXPECT(found <= 0, 0)) {
+        status = (found < 0) ? -1 : 1;
         goto done;
     }
 
-    Py_INCREF(value);
     if (EXPECT(self->version != version, 0)) {
         Py_DECREF(value);
         goto done;
@@ -909,25 +972,15 @@ done:
 }
 
 
-PyObject* SortedDict_index(SortedDict *self, PyObject *index)
+static PyObject *index_once(SortedDict *self, long i, bool *moved)
 {
-    long i = PyLong_AsLong(index);
-    if (EXPECT(PyErr_Occurred() != NULL, 0)) {
-        return NULL;
-    }
-
-    if (i == 0 && !self->dirty && self->karr && self->pend_count) {
-        PyObject *ret = NULL;
-        int status = peek_best(self, &ret);
-        if (status <= 0) {
-            return ret;  // NULL with the exception set when status < 0
-        }
-        // status 1: fall through to the merge
-    }
+    *moved = false;
 
     if (EXPECT(update_keys(self), 0)) {
         return NULL;
     }
+
+    uint64_t version = self->version;
 
     // validate against max_depth
     Py_ssize_t len = self->k_len;
@@ -946,11 +999,13 @@ PyObject* SortedDict_index(SortedDict *self, PyObject *index)
     }
 
     PyObject *key = Py_NewRef(self->karr[i]);
-
-    // borrowed reference
-    PyObject *value = PyDict_GetItemWithError(self->data, key);
-    if (EXPECT(!value, 0)) {
-        if (!PyErr_Occurred()) {
+    PyObject *value;
+    PyObject *data = Py_NewRef(self->data);
+    int found = PyDict_GetItemRef(data, key, &value);
+    Py_DECREF(data);
+    if (EXPECT(found <= 0, 0)) {
+        if (found == 0) {
+            *moved = (self->version != version);
             PyErr_SetObject(PyExc_KeyError, key);
         }
         Py_DECREF(key);
@@ -959,13 +1014,51 @@ PyObject* SortedDict_index(SortedDict *self, PyObject *index)
 
     PyObject *ret = PyTuple_New(2);
     if (EXPECT(!ret, 0)) {
+        Py_DECREF(value);
         Py_DECREF(key);
         return NULL;
     }
 
     PyTuple_SET_ITEM(ret, 0, key);
-    PyTuple_SET_ITEM(ret, 1, Py_NewRef(value));
+    PyTuple_SET_ITEM(ret, 1, value);
 
+    return ret;
+}
+
+
+static PyObject *locked_index(SortedDict *self, long i)
+{
+    if (i == 0 && !self->dirty && self->karr && self->pend_count) {
+        PyObject *ret = NULL;
+        int status = peek_best(self, &ret);
+        if (status <= 0) {
+            return ret;
+        }
+    }
+
+    bool moved;
+    PyObject *ret = index_once(self, i, &moved);
+
+    for (int attempt = 0; !ret && moved && attempt < SD_READ_RETRIES; ++attempt) {
+        PyErr_Clear();
+        ret = index_once(self, i, &moved);
+    }
+
+    return ret;
+}
+
+
+PyObject* SortedDict_index(SortedDict *self, PyObject *index)
+{
+    long i = PyLong_AsLong(index);
+    if (EXPECT(PyErr_Occurred() != NULL, 0)) {
+        return NULL;
+    }
+
+    PyObject *ret;
+    Py_BEGIN_CRITICAL_SECTION(self);
+    ret = locked_index(self, i);
+    Py_END_CRITICAL_SECTION();
     return ret;
 }
 
@@ -993,11 +1086,15 @@ static int convert_item(PyObject **obj, PyObject *from, PyObject *to)
 }
 
 
-PyObject* SortedDict_todict_impl(SortedDict *self, PyObject *from, PyObject *to)
+static PyObject *todict_once(SortedDict *self, PyObject *from, PyObject *to, bool *moved)
 {
+    *moved = false;
+
     if (EXPECT(update_keys(self), 0)) {
         return NULL;
     }
+
+    uint64_t version = self->version;
 
     // the book may be mutated by a key hash or a conversion callback below,
     // hold both so the snapshot stays intact
@@ -1024,16 +1121,18 @@ PyObject* SortedDict_todict_impl(SortedDict *self, PyObject *from, PyObject *to)
         }
 
         for (Py_ssize_t i = 0; i < len; ++i) {
-            PyObject *value = PyDict_GetItemWithError(data, PyTuple_GET_ITEM(keys, i));
+            PyObject *value;
+            int found = PyDict_GetItemRef(data, PyTuple_GET_ITEM(keys, i), &value);
 
-            if (EXPECT(!value, 0)) {
-                if (!PyErr_Occurred()) {
+            if (EXPECT(found <= 0, 0)) {
+                if (found == 0) {
+                    *moved = (self->version != version);
                     PyErr_SetObject(PyExc_KeyError, PyTuple_GET_ITEM(keys, i));
                 }
                 goto error;
             }
 
-            PyList_SET_ITEM(values, i, Py_NewRef(value));
+            PyList_SET_ITEM(values, i, value);
         }
     }
 
@@ -1060,16 +1159,16 @@ PyObject* SortedDict_todict_impl(SortedDict *self, PyObject *from, PyObject *to)
             Py_DECREF(key);
             Py_DECREF(value);
         } else {
-            value = PyDict_GetItemWithError(data, key);
-            if (EXPECT(!value, 0)) {
-                if (!PyErr_Occurred()) {
+            int found = PyDict_GetItemRef(data, key, &value);
+            if (EXPECT(found <= 0, 0)) {
+                if (found == 0) {
+                    *moved = (self->version != version);
                     PyErr_SetObject(PyExc_KeyError, key);
                 }
                 goto error;
             }
 
-            // the insert hashes the key, which can drop the book's value ref
-            Py_INCREF(value);
+            // the insert hashes the key, which can drop the book ref
             failed = PyDict_SetItem(ret, key, value) < 0;
             Py_DECREF(value);
         }
@@ -1093,6 +1192,20 @@ error:
 }
 
 
+PyObject* locked_SortedDict_todict(SortedDict *self, PyObject *from, PyObject *to)
+{
+    bool moved;
+    PyObject *ret = todict_once(self, from, to, &moved);
+
+    for (int attempt = 0; !ret && moved && attempt < SD_READ_RETRIES; ++attempt) {
+        PyErr_Clear();
+        ret = todict_once(self, from, to, &moved);
+    }
+
+    return ret;
+}
+
+
 PyObject* SortedDict_todict(SortedDict *self, PyObject *unused, PyObject *kwargs)
 {
     static char *kwlist[] = {"from_type", "to_type", NULL};
@@ -1103,13 +1216,21 @@ PyObject* SortedDict_todict(SortedDict *self, PyObject *unused, PyObject *kwargs
         return NULL;
     }
 
-    return SortedDict_todict_impl(self, from, to);
+    PyObject *ret;
+    Py_BEGIN_CRITICAL_SECTION(self);
+    ret = locked_SortedDict_todict(self, from, to);
+    Py_END_CRITICAL_SECTION();
+    return ret;
 }
 
 
 PyObject* SortedDict_tolist(SortedDict *self, PyObject *Py_UNUSED(ignored))
 {
-    return build_items(self);
+    PyObject *ret;
+    Py_BEGIN_CRITICAL_SECTION(self);
+    ret = build_items(self);
+    Py_END_CRITICAL_SECTION();
+    return ret;
 }
 
 
@@ -1136,14 +1257,21 @@ static int truncate_to_depth(SortedDict *self)
         return -1;
     }
     Py_INCREF(keys);
+    PyObject *data = Py_NewRef(self->data);
 
     for (Py_ssize_t i = self->depth; i < size; ++i) {
-        if (EXPECT(PyDict_DelItem(self->data, PyTuple_GET_ITEM(keys, i)) == -1, 0)) {
-            escalate_to_dirty(self);
-            Py_DECREF(keys);
-            return -1;
+        if (EXPECT(PyDict_DelItem(data, PyTuple_GET_ITEM(keys, i)) == -1, 0)) {
+            if (!PyErr_ExceptionMatches(PyExc_KeyError)) {
+                escalate_to_dirty(self);
+                Py_DECREF(data);
+                Py_DECREF(keys);
+                return -1;
+            }
+            PyErr_Clear();
         }
     }
+
+    Py_DECREF(data);
 
     if (EXPECT(self->version == version, 1)) {
         // evictions only come off the tail: shrink in place. the evicted
@@ -1161,6 +1289,7 @@ static int truncate_to_depth(SortedDict *self)
         }
 
         self->k_len = self->depth;
+        self->version++;
         Py_CLEAR(self->keys_tuple);
 
         for (Py_ssize_t i = 0; i < size - self->depth; ++i) {
@@ -1181,7 +1310,12 @@ static int truncate_to_depth(SortedDict *self)
 
 PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored))
 {
-    if (EXPECT(truncate_to_depth(self), 0)) {
+    int ret;
+    Py_BEGIN_CRITICAL_SECTION(self);
+    ret = truncate_to_depth(self);
+    Py_END_CRITICAL_SECTION();
+
+    if (EXPECT(ret, 0)) {
         return NULL;
     }
 
@@ -1190,7 +1324,7 @@ PyObject* SortedDict_truncate(SortedDict *self, PyObject *Py_UNUSED(ignored))
 
 
 /* Sorted Dictionary Mapping Functions */
-Py_ssize_t SortedDict_len(const SortedDict *self)
+Py_ssize_t locked_SortedDict_len(const SortedDict *self)
 {
     Py_ssize_t len = PyDict_GET_SIZE(self->data);
     if (self->depth && self->depth < len) {
@@ -1200,22 +1334,46 @@ Py_ssize_t SortedDict_len(const SortedDict *self)
     return len;
 }
 
+
+Py_ssize_t SortedDict_len(const SortedDict *self)
+{
+    Py_ssize_t ret;
+    Py_BEGIN_CRITICAL_SECTION(self);
+    ret = locked_SortedDict_len(self);
+    Py_END_CRITICAL_SECTION();
+    return ret;
+}
+
+
+PyObject *SortedDict_get_data(SortedDict *self, void *Py_UNUSED(closure))
+{
+    PyObject *ret;
+    Py_BEGIN_CRITICAL_SECTION(self);
+    ret = Py_NewRef(self->data);
+    Py_END_CRITICAL_SECTION();
+    return ret;
+}
+
 PyObject *SortedDict_getitem(SortedDict *self, PyObject *key)
 {
-    PyObject *ret = PyDict_GetItemWithError(self->data, key);
-    if (ret) {
-        Py_INCREF(ret);
-        return ret;
-    }
+    PyObject *ret;
+    int found;
 
-    if (EXPECT(!PyErr_Occurred(), 0)) {
+    Py_BEGIN_CRITICAL_SECTION(self);
+    PyObject *data = Py_NewRef(self->data);
+    found = PyDict_GetItemRef(data, key, &ret);
+    Py_DECREF(data);
+    Py_END_CRITICAL_SECTION();
+
+    if (EXPECT(found == 0, 0)) {
         PyErr_SetString(PyExc_KeyError, "key does not exist");
     }
 
     return ret;
 }
 
-int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
+
+static int locked_setitem(SortedDict *self, PyObject *key, PyObject *value)
 {
     bool cache_live = (!self->dirty && self->karr != NULL);
     uint64_t version = self->version;
@@ -1228,27 +1386,33 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
         version = self->version;
     }
 
+    PyObject *data = Py_NewRef(self->data);
+
     if (value) {
-        Py_ssize_t before = PyDict_GET_SIZE(self->data);
-        int ret = PyDict_SetItem(self->data, key, value);
+        Py_ssize_t before = PyDict_GET_SIZE(data);
+        int ret = PyDict_SetItem(data, key, value);
 
         if (EXPECT(ret == -1, 0)) {
+            Py_DECREF(data);
             return ret;
         }
 
-        if (PyDict_GET_SIZE(self->data) == before && self->version == version) {
+        if (PyDict_GET_SIZE(data) == before && self->version == version) {
             // in place value update, the key set did not change
+            Py_DECREF(data);
             return ret;
         }
 
         if (!cache_live) {
             self->dirty = true;
             self->version++;
-        } else if (PyDict_GET_SIZE(self->data) == before + 1 && self->version == version) {
+        } else if (PyDict_GET_SIZE(data) == before + 1 && self->version == version) {
             log_append(self, PENDING_INSERT, key);
         } else {
             escalate_to_dirty(self);
         }
+
+        Py_DECREF(data);
 
         if (EXPECT(self->truncate && truncate_to_depth(self), 0)) {
             return -1;
@@ -1257,7 +1421,35 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
         return ret;
     } else {
         // setitem also called for del (value will be null for deletes)
-        int ret = PyDict_DelItem(self->data, key);
+#ifdef Py_GIL_DISABLED
+        int present = PyDict_Contains(data, key);
+        if (EXPECT(present <= 0, 0)) {
+            Py_DECREF(data);
+            if (present == 0) {
+                PyErr_SetObject(PyExc_KeyError, key);
+            }
+            return -1;
+        }
+
+        if (!cache_live) {
+            self->dirty = true;
+            self->version++;
+        } else if (self->version == version) {
+            log_append(self, PENDING_DELETE, key);
+        } else {
+            escalate_to_dirty(self);
+        }
+
+        int ret = PyDict_DelItem(data, key);
+        Py_DECREF(data);
+        if (EXPECT(ret != 0, 0)) {
+            escalate_to_dirty(self);
+        }
+
+        return ret;
+#else
+        int ret = PyDict_DelItem(data, key);
+        Py_DECREF(data);
         if (ret != 0) {
             // a failed delete leaves the cache and log untouched
             return ret;
@@ -1273,13 +1465,30 @@ int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
         }
 
         return ret;
+#endif
     }
 }
+
+int SortedDict_setitem(SortedDict *self, PyObject *key, PyObject *value)
+{
+    int ret;
+    Py_BEGIN_CRITICAL_SECTION(self);
+    ret = locked_setitem(self, key, value);
+    Py_END_CRITICAL_SECTION();
+    return ret;
+}
+
 
 /* Seq Functions */
 int SortedDict_contains(const SortedDict *self, PyObject *value)
 {
-    return PyDict_Contains(self->data, value);
+    int ret;
+    Py_BEGIN_CRITICAL_SECTION(self);
+    PyObject *data = Py_NewRef(self->data);
+    ret = PyDict_Contains(data, value);
+    Py_DECREF(data);
+    Py_END_CRITICAL_SECTION();
+    return ret;
 }
 
 /* side iterator */
@@ -1288,6 +1497,7 @@ static void SortedDictIter_dealloc(SortedDictIter *self)
     PyObject_GC_UnTrack(self);
     Py_CLEAR(self->keys);
     Py_CLEAR(self->data);
+    Py_CLEAR(self->owner);
     PyObject_GC_Del(self);
 }
 
@@ -1296,6 +1506,7 @@ static int SortedDictIter_traverse(SortedDictIter *self, visitproc visit, void *
 {
     Py_VISIT(self->keys);
     Py_VISIT(self->data);
+    Py_VISIT(self->owner);
 
     return 0;
 }
@@ -1305,6 +1516,7 @@ static int SortedDictIter_clear(SortedDictIter *self)
 {
     Py_CLEAR(self->keys);
     Py_CLEAR(self->data);
+    Py_CLEAR(self->owner);
 
     return 0;
 }
@@ -1312,27 +1524,31 @@ static int SortedDictIter_clear(SortedDictIter *self)
 
 static PyObject *SortedDictIter_next(SortedDictIter *self)
 {
-    if (self->index >= self->len) {
+    Py_ssize_t index = self->index;
+    if (index >= self->len) {
         return NULL;
     }
 
-    PyObject *key = PyTuple_GET_ITEM(self->keys, self->index);
+    PyObject *key = PyTuple_GET_ITEM(self->keys, index);
 
     if (!self->pairs) {
-        self->index++;
+        self->index = index + 1;
         return Py_NewRef(key);
     }
 
-    PyObject *value = PyDict_GetItemWithError(self->data, key);
-    if (EXPECT(!value, 0)) {
-        if (!PyErr_Occurred()) {
+    PyObject *value;
+    int found;
+    Py_BEGIN_CRITICAL_SECTION(self->owner);
+    found = PyDict_GetItemRef(self->data, key, &value);
+    Py_END_CRITICAL_SECTION();
+    if (EXPECT(found <= 0, 0)) {
+        if (found == 0) {
             // the level was deleted mid iteration so raise
             PyErr_SetObject(PyExc_KeyError, key);
         }
         return NULL;
     }
 
-    Py_INCREF(value);
     PyObject *ret = PyTuple_New(2);
     if (EXPECT(!ret, 0)) {
         Py_DECREF(value);
@@ -1341,7 +1557,7 @@ static PyObject *SortedDictIter_next(SortedDictIter *self)
     PyTuple_SET_ITEM(ret, 0, Py_NewRef(key));
     PyTuple_SET_ITEM(ret, 1, value);
 
-    self->index++;
+    self->index = index + 1;
     return ret;
 }
 
@@ -1361,7 +1577,7 @@ PyTypeObject SortedDictIterType = {
 };
 
 
-static PyObject *SortedDict_iter_new(SortedDict *self, bool pairs)
+static PyObject *locked_iter_new(SortedDict *self, bool pairs)
 {
     if (EXPECT(update_keys(self), 0)) {
         return NULL;
@@ -1379,6 +1595,7 @@ static PyObject *SortedDict_iter_new(SortedDict *self, bool pairs)
 
     it->keys = Py_NewRef(snapshot);
     it->data = Py_NewRef(self->data);
+    it->owner = Py_NewRef((PyObject *)self);
     it->index = 0;
     it->pairs = pairs;
 
@@ -1391,6 +1608,16 @@ static PyObject *SortedDict_iter_new(SortedDict *self, bool pairs)
 
     PyObject_GC_Track(it);
     return (PyObject *)it;
+}
+
+
+static PyObject *SortedDict_iter_new(SortedDict *self, bool pairs)
+{
+    PyObject *ret;
+    Py_BEGIN_CRITICAL_SECTION(self);
+    ret = locked_iter_new(self, pairs);
+    Py_END_CRITICAL_SECTION();
+    return ret;
 }
 
 
