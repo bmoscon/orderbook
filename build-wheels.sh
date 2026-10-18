@@ -2,7 +2,7 @@
 # Do not run manually (runs in the docker container). use wheels.sh to launch it
 set -e -x
 
-py_vers=("/opt/python/cp313-cp313/bin" "/opt/python/cp314-cp314/bin" "/opt/python/cp314-cp314t/bin")
+py_vers=("/opt/python/cp313-cp313/bin" "/opt/python/cp314-cp314/bin" "/opt/python/cp314-cp314t/bin" "/opt/python/cp315-cp315/bin" "/opt/python/cp315-cp315t/bin")
 
 rm -rf /tmp/wheelhouse
 mkdir -p /tmp/wheelhouse

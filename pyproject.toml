@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "order_book"
-version = "1.1.0"
+version = "1.1.1"
 description = "A fast orderbook implementation, in C, for Python"
 authors = [{name = "Bryant Moscon", email = "bmoscon@gmail.com"}]
 license = "GPL-3.0-or-later"
@@ -19,6 +19,7 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: Free Threading :: 3 - Stable",
     "Programming Language :: Python :: Implementation :: CPython",

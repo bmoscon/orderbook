@@ -1,5 +1,8 @@
 ## Changelog
 
+### 1.1.1
+ * Update: Python 3.15 and 3.15t support
+
 ### 1.1.0 (2026-09-02)
  * Update: Remove FTX checksum support
  * Feature: free-threaded python (3.13+) support
