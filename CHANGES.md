@@ -1,6 +1,6 @@
 ## Changelog
 
-### 1.2.0
+### 1.2.0 (2026-10-29)
  * Feature: Python 3.15 and 3.15t support
  * Feature: SortedDict takes `data` as a keyword and `max_depth=0` for no limit, as OrderBook does
  * Feature: side names (`bid`, `bids`, `ask`, `asks`) are accepted in any case
