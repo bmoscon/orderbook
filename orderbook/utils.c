@@ -4,85 +4,74 @@ Copyright (C) 2020-2026  Bryant Moscon - bmoscon@gmail.com
 Please see the LICENSE file for the terms and conditions
 associated with this software.
 */
+#include <ctype.h>
 #include <string.h>
 #include <stdint.h>
 #include "utils.h"
 
 
-enum side_e check_key(const char *key)
+// bid, bids, ask or asks, in any case. compared over the byte length, so an embedded NULL cannot alias a name
+enum side_e check_key(const char *key, size_t len)
 {
-    switch (key[0]) {
-        case 'b':
-            return (!strcmp(key + 1, "id") || !strcmp(key + 1, "ids")) ? BID : INVALID_SIDE;
-        case 'B':
-            return (!strcmp(key + 1, "ID") || !strcmp(key + 1, "IDS")) ? BID : INVALID_SIDE;
-        case 'a':
-            return (!strcmp(key + 1, "sk") || !strcmp(key + 1, "sks")) ? ASK : INVALID_SIDE;
-        case 'A':
-            return (!strcmp(key + 1, "SK") || !strcmp(key + 1, "SKS")) ? ASK : INVALID_SIDE;
-        default:
-            return INVALID_SIDE;
+    char name[4];
+
+    if (len < 3 || len > 4) {
+        return INVALID_SIDE;
     }
+
+    for (size_t i = 0; i < len; ++i) {
+        name[i] = (char) tolower((unsigned char) key[i]);
+    }
+
+    if (len == 4 && name[3] != 's') {
+        return INVALID_SIDE;
+    }
+
+    if (!memcmp(name, "bid", 3)) {
+        return BID;
+    }
+
+    if (!memcmp(name, "ask", 3)) {
+        return ASK;
+    }
+
+    return INVALID_SIDE;
 }
 
 
 /*
 CRC checksums for
-  * arm64 with CRC32 extension
-  * arm64 without extension
+  * arm64 (the CRC32 extension, checked at import on linux builds that do not assume it)
   * x86-64 with PCLMULQDQ instruction
   * failure case. The above should cover most any hardware made within the last 10 years
     note: crc32_orderbook_init will return -1 when this is the case
 */
 
-#if defined(__ARM_FEATURE_CRC32)
+#if defined(__aarch64__)
 #include <arm_acle.h>
-
-int crc32_orderbook_init(void)
-{
-    return 0;
-}
-
-uint32_t crc32_orderbook(const uint8_t *data, size_t len)
-{
-    uint32_t crc = 0xFFFFFFFF;
-
-    while (len >= 8) {
-        uint64_t chunk;
-        memcpy(&chunk, data, 8);
-        crc = __crc32d(crc, chunk);
-        data += 8;
-        len -= 8;
-    }
-
-    while (len--) {
-        crc = __crc32b(crc, *data++);
-    }
-
-    return ~crc;
-}
-
-#elif defined(__aarch64__)
-#include <arm_acle.h>
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ARM_FEATURE_CRC32)
 #include <sys/auxv.h>
-#include <asm/hwcap.h>
+#ifndef HWCAP_CRC32
+#define HWCAP_CRC32 (1 << 7)
+#endif
 #endif
 
 int crc32_orderbook_init(void)
 {
-#if defined(__linux__) && defined(HWCAP_CRC32)
-    if (!(getauxval(AT_HWCAP) & HWCAP_CRC32)) {
-        return -1;
-    }
-#endif
+#if defined(__linux__) && !defined(__ARM_FEATURE_CRC32)
+    // compiled for a baseline that need not have the instructions, so ask the kernel
+    return (getauxval(AT_HWCAP) & HWCAP_CRC32) ? 0 : -1;
+#else
     return 0;
+#endif
 }
 
+#if !defined(__ARM_FEATURE_CRC32)
 #if defined(__clang__)
 __attribute__((target("crc")))
 #else
 __attribute__((target("+crc")))
+#endif
 #endif
 uint32_t crc32_orderbook(const uint8_t *data, size_t len)
 {

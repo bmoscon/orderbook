@@ -1,7 +1,22 @@
 ## Changelog
 
-### 1.1.1
- * Update: Python 3.15 and 3.15t support
+### 1.2.0
+ * Feature: Python 3.15 and 3.15t support
+ * Feature: SortedDict takes `data` as a keyword and `max_depth=0` for no limit, as OrderBook does
+ * Feature: side names (`bid`, `bids`, `ask`, `asks`) are accepted in any case
+ * Bugfix: a level cancelled and re-quoted between reads kept the original key object in the sorted cache, so `keys()`, `index()` and checksums could render a stale object (`1.0` for `1.00`)
+ * Bugfix: BITGET checksums rendered small values in scientific notation; the wire string is hashed, as for OKX
+ * Bugfix: Kraken checksums lost the digits of a value with a positive exponent (`2E+3`)
+ * Bugfix: `max_depth_strict` was not applied when a side was assigned wholesale or `__init__` was re-run
+ * Bugfix: assigning `__max_depth`, `__truncate` or `__ordering` could crash the interpreter
+ * Bugfix: subclasses of OrderBook could not set their own attributes
+ * Bugfix: on free-threaded builds, reading `max_depth`, `__max_depth`, `__truncate` or `__ordering` while another thread re-initialised the book was a data race
+ * Performance: deleting a price that is not in the book no longer forces a full re-sort on the next read
+ * Performance: checksums snapshot only the levels they hash, so the cost no longer grows with book depth
+ * Performance: `max_depth_strict` eviction is O(1) per insert instead of copying every key
+ * Performance: depth-limited reads copy only the visible keys
+ * Update: a wrong argument type raises TypeError (was ValueError) and an out of range `max_depth` raises OverflowError
+ * Update: ~400 fewer lines of C. Type tables out of the headers, the cached keys tuple and module state gone, duplicated paths consolidated
 
 ### 1.1.0 (2026-09-02)
  * Update: Remove FTX checksum support

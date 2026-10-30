@@ -16,7 +16,7 @@ from order_book import OrderBook
 def populate_orderbook():
     ob = OrderBook()
 
-    data = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/book?level=2").json()
+    data = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/book?level=2", timeout=10).json()
     for side, d in data.items():
         if side == 'bids':
             for price, size, _ in d:
@@ -50,7 +50,7 @@ def test_to_dict():
 def test_orderbook_getitem():
     ob = OrderBook()
 
-    data = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/book?level=2").json()
+    data = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/book?level=2", timeout=10).json()
     for side, d in data.items():
         if side in {'bids', 'asks'}:
             for price, size, _ in d:
@@ -144,7 +144,7 @@ def test_orderbook_items():
 def test_orderbook_setitem():
     ob = OrderBook()
 
-    data = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/book?level=2").json()
+    data = requests.get("https://api.exchange.coinbase.com/products/BTC-USD/book?level=2", timeout=10).json()
     ob.bids = {Decimal(price): size for price, size, _ in data['bids']}
     ob.asks = {Decimal(price): size for price, size, _ in data['asks']}
 
@@ -313,3 +313,50 @@ def test_zero_max_depth():
     assert len(ob.bids) == 5
     assert len(ob.bids.keys()) == 5
     assert len(list(ob.bids)) == 5
+
+
+def test_subclass_attributes():
+    class Book(OrderBook):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.extra = 1
+
+    book = Book(max_depth=5)
+    assert book.extra == 1
+    assert book.max_depth == 5
+    book.bids = {1: 1}
+    assert book.bids.keys() == (1,)
+
+    with pytest.raises(AttributeError):
+        OrderBook().extra = 1
+
+
+def test_side_names_any_case():
+    ob = OrderBook()
+    ob['Bid'][1] = 1
+    ob['aSkS'][2] = 2
+    assert ob.bids.keys() == (1,)
+    assert ob.asks.keys() == (2,)
+    assert ob['BIDS'] is ob.bids
+
+    # a NULL does not make a longer string one of the names
+    with pytest.raises(KeyError):
+        ob['bid\x00']
+
+    with pytest.raises(ValueError):
+        ob['bid\x00junk'] = {}
+
+
+def test_strict_depth_applies_to_assignment():
+    ob = OrderBook(max_depth=3, max_depth_strict=True)
+    ob.bids = {p: p for p in range(10)}
+    assert len(ob.bids.__data) == 3
+    assert 0 not in ob.bids
+    assert ob.bids.keys() == (9, 8, 7)
+
+    # and to a re-run of __init__ on a live book
+    ob = OrderBook()
+    ob.asks = {p: p for p in range(10)}
+    ob.__init__(max_depth=2, max_depth_strict=True)
+    assert ob.asks.keys() == (0, 1)
+    assert len(ob.asks.__data) == 2

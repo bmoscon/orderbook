@@ -7,132 +7,31 @@ associated with this software.
 #ifndef __ORDERBOOK__
 #define __ORDERBOOK__
 
-
-#include <stdint.h>
 #include <stdbool.h>
 
 #define PY_SSIZE_T_CLEAN
 #include "Python.h"
-#include "structmember.h"
 #include "sorteddict.h"
 
 
 #define CHECKSUM_BUFFER_MAX 4096
 
+// zero is the default. tp_alloc hands out a book without a checksum
 enum Checksums {
-    CHECKSUM_PROCESSING_ERROR = -1,
+    NO_CHECKSUM,
     KRAKEN,
     OKX,
     BITGET,
-    BITFINEX,
-    INVALID_CHECKSUM_FORMAT
+    BITFINEX
 };
 
 typedef struct {
     PyObject_HEAD
     SortedDict *bids;
     SortedDict *asks;
-    uint32_t max_depth;
-    uint32_t checksum_len;
+    int max_depth;
     enum Checksums checksum;
     bool truncate;
 } Orderbook;
-
-
-void Orderbook_dealloc(Orderbook *self);
-PyObject *Orderbook_new(PyTypeObject *type, PyObject *args, PyObject *kwds);
-int Orderbook_init(Orderbook *self, PyObject *args, PyObject *kwds);
-int Orderbook_traverse(Orderbook *self, visitproc visit, void *arg);
-int Orderbook_clear(Orderbook *self);
-
-PyObject* Orderbook_todict(const Orderbook *self, PyObject *unused, PyObject *kwargs);
-PyObject* Orderbook_checksum(const Orderbook *self, PyObject *Py_UNUSED(ignored));
-
-
-Py_ssize_t Orderbook_len(const Orderbook *self);
-PyObject *Orderbook_getitem(const Orderbook *self, PyObject *key);
-int Orderbook_setitem(const Orderbook *self, PyObject *key, PyObject *value);
-int Orderbook_setattr(const PyObject *self, PyObject *attr, PyObject *value);
-
-
-// Orderbook class members
-static PyMemberDef Orderbook_members[] = {
-    // needs to be RO, previously was allowing non sortedDict values
-    // and we need setattro to validate the values
-    {"bids", T_OBJECT_EX, offsetof(Orderbook, bids), READONLY, "bids"},
-    {"bid", T_OBJECT_EX, offsetof(Orderbook, bids), READONLY, "bids"},
-    {"asks", T_OBJECT_EX, offsetof(Orderbook, asks), READONLY, "asks"},
-    {"ask", T_OBJECT_EX, offsetof(Orderbook, asks), READONLY, "asks"},
-    {"max_depth", T_INT, offsetof(Orderbook, max_depth), READONLY, "maximum book depth"},
-    {NULL}
-};
-
-
-// Orderbook class methods
-static PyMethodDef Orderbook_methods[] = {
-    {"to_dict", (PyCFunction) Orderbook_todict, METH_VARARGS | METH_KEYWORDS, "return a python dictionary with bids and asks"},
-    {"checksum", (PyCFunction) Orderbook_checksum, METH_NOARGS, "calculate checksum using top N levels"},
-    {NULL}
-};
-
-
-// Orderbook mapping functions
-static PyMappingMethods Orderbook_mapping = {
-    (lenfunc)Orderbook_len,
-    (binaryfunc)Orderbook_getitem,
-    (objobjargproc)Orderbook_setitem
-};
-
-
-// Orderbook Type Setup
-static PyTypeObject OrderbookType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "order_book.OrderBook",
-    .tp_doc = "An Orderbook data structure",
-    .tp_basicsize = sizeof(Orderbook),
-    .tp_itemsize = 0,
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC,
-    .tp_new = Orderbook_new,
-    .tp_init = (initproc) Orderbook_init,
-    .tp_dealloc = (destructor) Orderbook_dealloc,
-    .tp_traverse = (traverseproc) Orderbook_traverse,
-    .tp_clear = (inquiry) Orderbook_clear,
-    .tp_members = Orderbook_members,
-    .tp_methods = Orderbook_methods,
-    .tp_as_mapping = &Orderbook_mapping,
-    .tp_setattro = (setattrofunc) Orderbook_setattr,
-    .tp_dictoffset = 0,
-};
-
-// the module contains reusable python objects referring to the builtin format 
-// function and a fixed string 'f'
-typedef struct {
-    PyObject *format;
-    PyObject *formatf;
-} OrderBookModuleState;
-
-static int order_book_traverse(PyObject *m, visitproc visit, void *arg);
-static int order_book_clear(PyObject* m);
-static void order_book_free(PyObject *m);
-static OrderBookModuleState* get_order_book_state(PyObject *m);
-
-
-// Module specific definitions and initilization
-static PyModuleDef orderbookmodule = {
-    PyModuleDef_HEAD_INIT,
-    .m_name = "order_book",
-    .m_doc = "Orderbook data structure",
-    .m_size = sizeof(OrderBookModuleState),
-    .m_methods = NULL,
-    .m_slots = NULL,
-    .m_traverse = order_book_traverse,
-    .m_clear = order_book_clear,
-    .m_free = (void *)order_book_free,
-};
-
-
-// Checksum Definitions
-static PyObject* calculate_checksum(const Orderbook *ob, uint8_t *buffer);
-
 
 #endif

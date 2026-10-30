@@ -225,6 +225,8 @@ print(ob.to_dict(from_type=str, to_type=float))
 | `.truncate()` | drop everything past `max_depth` |
 | `sd[key]`, `sd[key] = v`, `del sd[key]`, `key in sd`, `len(sd)`, iteration | as expected; iteration yields keys in sorted order |
 
+`max_depth` is a view limit: `len()`, `keys()`, `index()`, `to_dict()`, `to_list()` and iteration stop at it, while `sd[key]` and `key in sd` see every retained level. `max_depth=0` means no limit.
+
 
 ### Main Features
 

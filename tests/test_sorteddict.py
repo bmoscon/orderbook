@@ -163,7 +163,7 @@ def test_to_dict():
     for key, _ in d.items():
         assert d[key] == asc[key]
         if previous:
-            d[key] > previous
+            assert float(d[key]) > float(previous)
         previous = d[key]
 
     d = desc.to_dict()
@@ -173,7 +173,7 @@ def test_to_dict():
     for key, val in d.items():
         assert d[key] == desc[key]
         if previous:
-            d[key] < previous
+            assert float(d[key]) < float(previous)
         previous = d[key]
 
 def test_to_list():
@@ -279,7 +279,7 @@ def test_invalid_ordering():
     with pytest.raises(ValueError):
         SortedDict(ordering='D')
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         SortedDict(ordering=1)
 
 
@@ -354,13 +354,14 @@ def test_invalid_depth():
     with pytest.raises(ValueError):
         SortedDict(max_depth=-1)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         SortedDict(max_depth='A')
 
 
-def test_invalid_truncate():
-    with pytest.raises(ValueError):
-        SortedDict(truncate=10)
+def test_truncate_truthiness():
+    # any object's truth value sets the flag
+    assert SortedDict(truncate=10).__truncate is True
+    assert SortedDict(truncate=[]).__truncate is False
 
 
 def test_depth_members():
@@ -547,8 +548,77 @@ def test_reinit_first_time_defaults_to_ascending():
 
 def test_max_depth_larger_than_int_is_rejected():
     for value in (2 ** 31, 2 ** 32 + 5, 2 ** 40 + 7):
-        with pytest.raises(ValueError):
+        with pytest.raises(OverflowError):
             SortedDict({i: i for i in range(10)}, max_depth=value)
 
     d = SortedDict({i: i for i in range(10)}, max_depth=2 ** 31 - 1)
     assert len(d) == 10
+
+
+def test_data_keyword():
+    d = SortedDict(data={3: 'c', 1: 'a'})
+    assert d.keys() == (1, 3)
+    assert SortedDict(data=None).keys() == ()
+
+    with pytest.raises(TypeError):
+        SortedDict(data=[1, 2])
+
+
+def test_zero_max_depth_is_unlimited():
+    d = SortedDict({i: i for i in range(5)}, max_depth=0)
+    assert len(d) == 5
+    assert d.__max_depth == 0
+
+
+def test_members_are_readonly():
+    d = SortedDict()
+    for name in ('__max_depth', '__truncate', '__ordering'):
+        with pytest.raises(AttributeError):
+            setattr(d, name, 1)
+
+
+def test_requoted_key_object_is_the_dicts():
+    # a level cancelled and re-quoted between reads at an equal but differently
+    # rendered price - the cache must report the object the dict holds
+    d = SortedDict()
+    d[Decimal('2')] = 1
+    d[Decimal('0.5')] = 1
+    d.keys()
+
+    # delete then insert
+    d[Decimal('1.0')] = 5
+    d.keys()
+    del d[Decimal('1.0')]
+    d[Decimal('1.00')] = 5
+    assert [str(k) for k in d.keys()] == ['0.5', '1.00', '2']
+    assert d.index(1)[0] is next(k for k in d.__data if k == 1)
+
+    # insert, delete, insert
+    d.keys()
+    d[Decimal('3.0')] = 1
+    del d[Decimal('3.0')]
+    d[Decimal('3.00')] = 1
+    assert str(d.keys()[-1]) == '3.00'
+
+    # the top of book peek sees the newest object too
+    d.keys()
+    del d[Decimal('0.5')]
+    d[Decimal('0.50')] = 1
+    assert str(d.index(0)[0]) == '0.50'
+
+
+def test_many_requotes_in_one_flush():
+    # several prices cancelled and re-quoted between reads, in scrambled order:
+    # the cache must stay sorted and hand out the dict's objects
+    for ordering in ('ASC', 'DESC'):
+        d = SortedDict({Decimal(i): i for i in range(50)}, ordering=ordering)
+        d.keys()
+        for i in (30, 5, 41, 17, 2, 48):
+            del d[Decimal(i)]
+            d[Decimal(f'{i}.0')] = i
+        d[Decimal('7.5')] = 0
+        del d[Decimal(20)]
+
+        expected = sorted(d.__data, reverse=(ordering == 'DESC'))
+        assert d.keys() == tuple(expected)
+        assert all(a is b for a, b in zip(d.keys(), expected))

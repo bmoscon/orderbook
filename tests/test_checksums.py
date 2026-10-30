@@ -328,7 +328,9 @@ def test_bitget_checksum():
     for b in bids:
         ob.bids[Decimal(b[0])] = Decimal(b[1])
 
-    assert ob.checksum() == 3720106698
+    # the wire strings, interleaved bid first, hashed verbatim
+    expected = crc32(':'.join(f'{b[0]}:{b[1]}:{a[0]}:{a[1]}' for a, b in zip(asks[:25], bids[:25])).encode())
+    assert ob.checksum() == expected
 
     ob = OrderBook(checksum_format='BITGET')
     assert ob.checksum() == 0
@@ -980,6 +982,7 @@ def test_bitfinex_checksum_bad_format():
 
 
 def test_bitfinex_checksum_overflow():
+    outcomes = set()
     for length in range(4000, 4200):
         ob = OrderBook(checksum_format='BITFINEX')
         ob.bids = {Decimal(1): Decimal(1)}
@@ -987,8 +990,12 @@ def test_bitfinex_checksum_overflow():
 
         try:
             assert isinstance(ob.checksum(), int)
+            outcomes.add('ok')
         except ValueError:
-            pass
+            outcomes.add('overflow')
+
+    # the range straddles the buffer, so both must have happened
+    assert outcomes == {'ok', 'overflow'}
 
 
 def test_okx_checksum_bad_format():
@@ -999,3 +1006,36 @@ def test_okx_checksum_bad_format():
 
     with pytest.raises(ValueError):
         ob.checksum()
+
+
+def test_bitget_matches_okx_rendering():
+    # bitget copied okx's scheme: both hash the positional wire string, never an exponent
+    for fmt in ('OKX', 'BITGET'):
+        ob = OrderBook(checksum_format=fmt)
+        ob.bids[Decimal('0.000000001452')] = Decimal('26041231119')
+        ob.asks[Decimal('0.000000001461')] = Decimal('3422313485')
+        assert ob.checksum() == crc32(b'0.000000001452:26041231119:0.000000001461:3422313485')
+
+
+def test_kraken_positive_exponent():
+    # a value out of Decimal arithmetic renders with an exponent, which hides digits
+    ob = OrderBook(checksum_format='KRAKEN')
+    ob.bids = {Decimal('100'): Decimal('2E+3')}
+    ob.asks = {Decimal('101'): Decimal('1.5E-8')}
+    assert ob.checksum() == crc32(b'10115' b'1002000')
+
+
+def test_bitfinex_l3_empty_level_inside_window():
+    # an empty level inside the 25 level window must not shorten the string
+    ob = OrderBook(checksum_format='BITFINEX')
+    ob.bids[Decimal(1000)] = {}
+    for i in range(30):
+        ob.bids[Decimal(999 - i)] = {i: Decimal(1)}
+
+    assert ob.checksum() == crc32(':'.join(f'{i}:1' for i in range(25)).encode())
+
+
+@pytest.mark.parametrize('name', ['K', 'KRAK', 'kraken', 'B', 'BITG', 'OKX_SOMETHING', 'OKCO', ''])
+def test_checksum_format_must_match_exactly(name):
+    with pytest.raises(TypeError):
+        OrderBook(checksum_format=name)
