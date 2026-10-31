@@ -1,5 +1,8 @@
 ## Changelog
 
+### 1.2.1
+ * Bugfix: a clang build for aarch64 Linux fails with undefined symbol `__crc32d`
+
 ### 1.2.0 (2026-10-29)
  * Feature: Python 3.15 and 3.15t support
  * Feature: SortedDict takes `data` as a keyword and `max_depth=0` for no limit, as OrderBook does

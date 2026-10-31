@@ -48,7 +48,16 @@ CRC checksums for
 */
 
 #if defined(__aarch64__)
+#if defined(__clang__) && !defined(__ARM_FEATURE_CRC32)
+// clang's arm_acle.h declares the CRC intrinsics only when the extension is present
+// so a build for generic arm would fail to import.
+#define CRC32D(crc, x) __builtin_arm_crc32d((crc), (x))
+#define CRC32B(crc, x) __builtin_arm_crc32b((crc), (x))
+#else
 #include <arm_acle.h>
+#define CRC32D(crc, x) __crc32d((crc), (x))
+#define CRC32B(crc, x) __crc32b((crc), (x))
+#endif
 #if defined(__linux__) && !defined(__ARM_FEATURE_CRC32)
 #include <sys/auxv.h>
 #ifndef HWCAP_CRC32
@@ -80,13 +89,13 @@ uint32_t crc32_orderbook(const uint8_t *data, size_t len)
     while (len >= 8) {
         uint64_t chunk;
         memcpy(&chunk, data, 8);
-        crc = __crc32d(crc, chunk);
+        crc = CRC32D(crc, chunk);
         data += 8;
         len -= 8;
     }
 
     while (len--) {
-        crc = __crc32b(crc, *data++);
+        crc = CRC32B(crc, *data++);
     }
 
     return ~crc;
