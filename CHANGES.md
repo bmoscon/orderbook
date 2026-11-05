@@ -1,6 +1,6 @@
 ## Changelog
 
-### 1.2.1
+### 1.2.1 (2026-11-05)
  * Bugfix: a clang build for aarch64 Linux fails with undefined symbol `__crc32d`
  * Update: Windows support
 
