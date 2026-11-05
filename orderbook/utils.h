@@ -10,7 +10,12 @@ associated with this software.
 #include <stdint.h>
 #include <stddef.h>
 
+// windows support
+#if defined(_MSC_VER) && !defined(__clang__)
+#define EXPECT(EXPR, VAL) (EXPR)
+#else
 #define EXPECT(EXPR, VAL) __builtin_expect((EXPR), (VAL))
+#endif
 
 
 enum side_e {
