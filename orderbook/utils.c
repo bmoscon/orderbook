@@ -41,14 +41,19 @@ enum side_e check_key(const char *key, size_t len)
 
 /*
 CRC checksums for
-  * arm64 (the CRC32 extension, checked at import on linux builds that do not assume it)
+  * arm64 (the CRC32 extension, checked at import on linux and windows builds)
   * x86-64 with PCLMULQDQ instruction
   * failure case. The above should cover most any hardware made within the last 10 years
     note: crc32_orderbook_init will return -1 when this is the case
 */
 
-#if defined(__aarch64__)
-#if defined(__clang__) && !defined(__ARM_FEATURE_CRC32)
+#if defined(__aarch64__) || defined(_M_ARM64)
+#if defined(_MSC_VER) && !defined(__clang__)
+// MSVC ships the CRC intrinsics in intrin.h
+#include <intrin.h>
+#define CRC32D(crc, x) __crc32d((crc), (x))
+#define CRC32B(crc, x) __crc32b((crc), (x))
+#elif defined(__clang__) && !defined(__ARM_FEATURE_CRC32)
 // clang's arm_acle.h declares the CRC intrinsics only when the extension is present
 // so a build for generic arm would fail to import.
 #define CRC32D(crc, x) __builtin_arm_crc32d((crc), (x))
@@ -64,18 +69,27 @@ CRC checksums for
 #define HWCAP_CRC32 (1 << 7)
 #endif
 #endif
+#if defined(_WIN32) && !defined(__ARM_FEATURE_CRC32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#ifndef PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE
+#define PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE 31
+#endif
+#endif
 
 int crc32_orderbook_init(void)
 {
 #if defined(__linux__) && !defined(__ARM_FEATURE_CRC32)
     // compiled for a baseline that need not have the instructions, so ask the kernel
     return (getauxval(AT_HWCAP) & HWCAP_CRC32) ? 0 : -1;
+#elif defined(_WIN32) && !defined(__ARM_FEATURE_CRC32)
+    return IsProcessorFeaturePresent(PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE) ? 0 : -1;
 #else
     return 0;
 #endif
 }
 
-#if !defined(__ARM_FEATURE_CRC32)
+#if !defined(__ARM_FEATURE_CRC32) && (defined(__GNUC__) || defined(__clang__))
 #if defined(__clang__)
 __attribute__((target("crc")))
 #else
@@ -101,17 +115,28 @@ uint32_t crc32_orderbook(const uint8_t *data, size_t len)
     return ~crc;
 }
 
-#elif defined(__x86_64__)
+#elif defined(__x86_64__) || defined(_M_X64)
 // PCLMULQDQ on any intel chip since 2010 (some atom processors may be later years)
 // part of SSE4.1
 #include <immintrin.h>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 
 int crc32_orderbook_init(void)
 {
+#if defined(_MSC_VER)
+    int regs[4];
+    __cpuid(regs, 1);
+    return ((regs[2] & (1 << 1)) && (regs[2] & (1 << 19))) ? 0 : -1;
+#else
     return (__builtin_cpu_supports("pclmul") && __builtin_cpu_supports("sse4.1")) ? 0 : -1;
+#endif
 }
 
+#if defined(__GNUC__) || defined(__clang__)
 __attribute__((target("pclmul,sse4.1")))
+#endif
 static uint32_t crc32_fold_pclmul(const uint8_t *data, size_t len, uint32_t crc)
 {
     const __m128i k1k2 = _mm_set_epi64x(0x01c6e41596, 0x0154442bd4);
